@@ -20,13 +20,13 @@ type Config struct {
 	Port     int
 	Username string
 	Password string
-	Dataase  int
+	Database int
 }
 
 func NewRedisStore(cfg Config) *RedisStore {
 	client, err := rueidis.NewClient(
 		rueidis.ClientOption{
-			SelectDB:    cfg.Dataase,
+			SelectDB:    cfg.Database,
 			InitAddress: []string{cfg.Host + ":" + strconv.Itoa(cfg.Port)},
 			Username:    cfg.Username,
 			Password:    cfg.Password,
