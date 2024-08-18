@@ -4,9 +4,9 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/Flo4604/go-cache/pkg/types"
 	"github.com/goccy/go-json"
 	"github.com/redis/rueidis"
+	"github.com/steamsets/go-cache/pkg/types"
 )
 
 // This will work for any redis compatible source e.g dragonfly, redis, etc

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Flo4604/go-cache/pkg/types"
 	"github.com/Southclaws/fault"
 	"github.com/Southclaws/fault/fmsg"
+	"github.com/steamsets/go-cache/pkg/types"
 )
 
 type tieredCache[T any] struct {

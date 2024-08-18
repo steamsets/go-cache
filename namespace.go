@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Flo4604/go-cache/pkg/types"
+	"github.com/steamsets/go-cache/pkg/types"
 )
 
 type Namespace[T any] struct {
@@ -58,6 +58,28 @@ func (n Namespace[T]) Get(key string) (value *T, found bool, err error) {
 
 func (n Namespace[T]) Set(key string, value T, opts *types.SetOptions) error {
 	return n.store.Set(n.ns, key, value, opts)
+}
+
+type SetMany[T any] struct {
+	Value T
+	Key   string
+	Opts  *types.SetOptions
+}
+
+type GetMany[T any] struct {
+	Key   string
+	Value *T
+	Found bool
+}
+
+func (n Namespace[T]) GetMany([]string) []GetMany[T] {
+
+	return nil
+}
+
+func (n Namespace[T]) SetMany(values map[string]T, opts *types.SetOptions) error {
+
+	return nil
 }
 
 func (n Namespace[T]) Remove(key []string) error {

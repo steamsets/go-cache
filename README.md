@@ -14,9 +14,15 @@ It does not support all the features of unkey-cache yet.
 - [] Cloudflare R2 (todo)
 - [] Emit metrics
 
+# Installation
+
+```bash
+go get github.com/steamsets/go-cache@latest
+```
+
 # Usage
 
-Please see [example](https://github.com/Flo4604/go-cache/tree/main/example) folder
+Please see [example](https://github.com/steamsets/go-cache/tree/main/example) folder
 
 # License
 

@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"github.com/Flo4604/go-cache/pkg/types"
+	"github.com/steamsets/go-cache/pkg/types"
 )
 
 type Store interface {

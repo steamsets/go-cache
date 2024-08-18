@@ -4,9 +4,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/Flo4604/go-cache"
-	memoryStore "github.com/Flo4604/go-cache/store/memory"
-	redisStore "github.com/Flo4604/go-cache/store/redis"
+	"github.com/steamsets/go-cache"
+	memoryStore "github.com/steamsets/go-cache/store/memory"
+	redisStore "github.com/steamsets/go-cache/store/redis"
 )
 
 type User struct {
@@ -76,6 +76,17 @@ func main() {
 	err = c.Post.Set("post1", p, nil)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	c.User.SetMany(map[string]User{
+		"user1": u,
+	}, nil)
+
+	many := c.User.GetMany([]string{"user1"})
+	for _, m := range many {
+		log.Printf("m.Key: %s", m.Key)
+		log.Printf("m.Value: %+v", m.Value)
+		log.Printf("m.found: %+v", m.Found)
 	}
 
 	getUser, found, err := c.User.Get("user1")
