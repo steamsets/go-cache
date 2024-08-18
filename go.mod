@@ -1,4 +1,4 @@
-module github.com/Flo4604/go-cache
+module github.com/steamsets/go-cache
 
 go 1.22.6
 
