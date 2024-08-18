@@ -13,7 +13,7 @@ type Namespace[T any] struct {
 	fresh        time.Duration
 	stale        time.Duration
 	ns           types.TNamespace
-	store        TieredCache[T]
+	store        tieredCache[T]
 	revalidating *sync.Map
 }
 
@@ -24,7 +24,7 @@ type NamespaceConfig struct {
 }
 
 func NewNamespace[T any](ns types.TNamespace, ctx context.Context, cfg NamespaceConfig) Namespace[T] {
-	tieredCache := NewTieredCache[T](types.TNamespace(ns), cfg.Stores, cfg.Fresh, cfg.Stale)
+	tieredCache := newTieredCache[T](types.TNamespace(ns), cfg.Stores, cfg.Fresh, cfg.Stale)
 
 	return Namespace[T]{
 		ns:           ns,

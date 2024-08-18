@@ -10,15 +10,15 @@ import (
 	"github.com/Southclaws/fault/fmsg"
 )
 
-type TieredCache[T any] struct {
+type tieredCache[T any] struct {
 	stores []Store
 	ns     types.TNamespace
 	fresh  time.Duration
 	stale  time.Duration
 }
 
-func NewTieredCache[T any](ns types.TNamespace, stores []Store, fresh time.Duration, stale time.Duration) TieredCache[T] {
-	return TieredCache[T]{
+func newTieredCache[T any](ns types.TNamespace, stores []Store, fresh time.Duration, stale time.Duration) tieredCache[T] {
+	return tieredCache[T]{
 		stores: stores,
 		ns:     ns,
 		fresh:  fresh,
@@ -26,11 +26,11 @@ func NewTieredCache[T any](ns types.TNamespace, stores []Store, fresh time.Durat
 	}
 }
 
-func (t TieredCache[T]) Name() string {
+func (t tieredCache[T]) Name() string {
 	return "tiered"
 }
 
-func (t TieredCache[T]) Get(ns types.TNamespace, key string) (*types.TValue, bool, error) {
+func (t tieredCache[T]) Get(ns types.TNamespace, key string) (*types.TValue, bool, error) {
 	if len(t.stores) == 0 {
 		return nil, false, errors.New("no stores found")
 	}
@@ -61,7 +61,7 @@ func (t TieredCache[T]) Get(ns types.TNamespace, key string) (*types.TValue, boo
 	return nil, false, nil
 }
 
-func (t TieredCache[T]) Set(ns types.TNamespace, key string, value T, opts *types.SetOptions) error {
+func (t tieredCache[T]) Set(ns types.TNamespace, key string, value T, opts *types.SetOptions) error {
 	now := time.Now()
 	fresh := now.Add(t.fresh)
 	stale := now.Add(t.stale)
@@ -88,7 +88,7 @@ func (t TieredCache[T]) Set(ns types.TNamespace, key string, value T, opts *type
 	return nil
 }
 
-func (t *TieredCache[T]) Remove(ns types.TNamespace, key []string) error {
+func (t *tieredCache[T]) Remove(ns types.TNamespace, key []string) error {
 	for _, store := range t.stores {
 		if err := store.Remove(t.ns, key); err != nil {
 			return fault.Wrap(err, fmsg.With(store.Name()+" failed to remove key(s): "+strings.Join(key, ",")))
