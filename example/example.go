@@ -37,7 +37,7 @@ func main() {
 		Port:     6379,
 		Username: "",
 		Password: "",
-		Dataase:  0,
+		Database: 0,
 	})
 
 	c := Cache{
