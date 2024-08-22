@@ -7,12 +7,19 @@ This is a caching library heavily inspired by [unkey-cache](https://www.npmjs.co
 It does not support all the features of unkey-cache yet.
 
 - [x] Tiered caching
-- [x] Memory Cache
-- [x] Redis Cache
-- [] Cloudflare Cache
-- [] Cloudflare KV (todo)
-- [] Cloudflare R2 (todo)
-- [] Emit metrics
+- [x] Memory Store
+- [x] Redis Store
+
+Todo:
+
+- [] Cloudflare Store
+- [] Libsql Store
+- [] Metric Middleware
+- [] Encryption Middleware
+- [] Support for
+  - [] GetMany
+  - [] SetMany
+  - [] SwrMany
 
 # Installation
 
