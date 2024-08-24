@@ -16,10 +16,6 @@ Todo:
 - [] Libsql Store
 - [] Metric Middleware
 - [] Encryption Middleware
-- [] Support for
-  - [] GetMany
-  - [] SetMany
-  - [] SwrMany
 
 Extra Features:
 
