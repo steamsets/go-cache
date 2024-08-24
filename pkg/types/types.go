@@ -8,7 +8,7 @@ import (
 )
 
 type TValue struct {
-	Found      bool   // Whether the value was found or not -> used by GetMany
+	Found      bool   `json:"-"` // Whether the value was found or not -> used by GetMany
 	Key        string // Optionally the key that was used to get/set the value, incase of we retrieve multiple values
 	Value      interface{}
 	FreshUntil time.Time
@@ -34,6 +34,9 @@ func SetTIntoTValue(bytes []byte, T interface{}) (*TValue, error) {
 		return nil, err
 	}
 
-	tValue.Value = reflect.ValueOf(tValue.Value).Elem().Interface()
+	if tValue.Value != nil {
+		tValue.Value = reflect.ValueOf(tValue.Value).Elem().Interface()
+	}
+
 	return &tValue, nil
 }

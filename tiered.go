@@ -95,7 +95,6 @@ func (t tieredCache[T]) GetMany(ns types.TNamespace, keys []string) ([]types.TVa
 	copy(keysToFind, keys)
 
 	for idx, store := range t.stores {
-
 		// we already found all keys
 		if len(keysToFind) == 0 {
 			break
@@ -108,20 +107,19 @@ func (t tieredCache[T]) GetMany(ns types.TNamespace, keys []string) ([]types.TVa
 		}
 
 		for _, v := range values {
-			if v.Value != nil {
-				// Since we found it set it to the lower stores
-				valuesToSet = append(valuesToSet, v)
 
-				// But we should not look for it again
-				for i, k := range keysToFind {
-					if k == v.Key {
-						keysToFind = slices.Delete(keysToFind, i, i+1)
-						break
-					}
+			// Since we found it set it to the lower stores
+			valuesToSet = append(valuesToSet, v)
+
+			// But we should not look for it again
+			for i, k := range keysToFind {
+				if k == v.Key {
+					keysToFind = slices.Delete(keysToFind, i, i+1)
+					break
 				}
-
-				foundValues[v.Key] = v
 			}
+
+			foundValues[v.Key] = v
 		}
 
 		if len(valuesToSet) > 0 {
@@ -150,8 +148,6 @@ func (t tieredCache[T]) GetMany(ns types.TNamespace, keys []string) ([]types.TVa
 				Key:   key,
 			})
 		} else {
-			v.Key = key
-			v.Found = true
 			valuesToReturn = append(valuesToReturn, v)
 		}
 	}
@@ -159,7 +155,7 @@ func (t tieredCache[T]) GetMany(ns types.TNamespace, keys []string) ([]types.TVa
 	return valuesToReturn, nil
 }
 
-func (t tieredCache[T]) Set(ns types.TNamespace, key string, value T, opts *types.SetOptions) error {
+func (t tieredCache[T]) Set(ns types.TNamespace, key string, value *T, opts *types.SetOptions) error {
 	if len(t.stores) == 0 {
 		return errors.New("no stores found")
 	}
@@ -179,7 +175,7 @@ func (t tieredCache[T]) Set(ns types.TNamespace, key string, value T, opts *type
 	return nil
 }
 
-func (t *tieredCache[T]) SetMany(ns types.TNamespace, values []SetMany[T], opts *types.SetOptions) error {
+func (t *tieredCache[T]) SetMany(ns types.TNamespace, values []SetMany[*T], opts *types.SetOptions) error {
 	if len(t.stores) == 0 {
 		return errors.New("no stores found")
 	}

@@ -90,6 +90,11 @@ func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types
 	for idx, cmd := range res {
 		msg, err := cmd.ToMessage()
 		if err == rueidis.Nil {
+			values = append(values, types.TValue{
+				Found: false,
+				Value: nil,
+				Key:   keys[idx],
+			})
 			continue
 		}
 
@@ -111,6 +116,7 @@ func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types
 
 		value = *v
 		value.Key = keys[idx]
+		value.Found = true
 		values = append(values, value)
 	}
 

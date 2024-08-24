@@ -46,14 +46,21 @@ func (n Namespace[T]) Get(key string) (value *T, found bool, err error) {
 		return nil, false, nil
 	}
 
-	v := val.Value.(T)
+	var v *T
+	if v1, ok := val.Value.(T); ok {
+		v = &v1
+	}
+
+	if v2, ok := val.Value.(*T); ok {
+		v = v2
+	}
 
 	if time.Now().After(val.StaleUntil) {
 		n.store.Remove(n.ns, []string{key})
 		return nil, false, nil
 	}
 
-	return &v, found, nil
+	return v, found, nil
 }
 
 func (n Namespace[T]) Set(key string, value T, opts *types.SetOptions) error {
@@ -61,7 +68,7 @@ func (n Namespace[T]) Set(key string, value T, opts *types.SetOptions) error {
 		return errors.New("key is empty")
 	}
 
-	return n.store.Set(n.ns, key, value, opts)
+	return n.store.Set(n.ns, key, &value, opts)
 }
 
 type GetMany[T any] struct {
@@ -88,7 +95,7 @@ func (n Namespace[T]) GetMany(keys []string) ([]GetMany[T], error) {
 			ret = append(ret, GetMany[T]{
 				Key:   val.Key,
 				Value: nil,
-				Found: false,
+				Found: val.Found,
 			})
 
 			continue
@@ -102,7 +109,7 @@ func (n Namespace[T]) GetMany(keys []string) ([]GetMany[T], error) {
 		ret = append(ret, GetMany[T]{
 			Key:   val.Key,
 			Value: &v,
-			Found: true,
+			Found: val.Found,
 		})
 	}
 
@@ -121,7 +128,7 @@ type SetMany[T any] struct {
 	Opts  *types.SetOptions
 }
 
-func (n Namespace[T]) SetMany(values []SetMany[T], opts *types.SetOptions) error {
+func (n Namespace[T]) SetMany(values []SetMany[*T], opts *types.SetOptions) error {
 	if len(values) == 0 {
 		return errors.New("no values provided")
 	}
@@ -156,7 +163,7 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 				return nil, error
 			}
 
-			if err := n.store.Set(n.ns, key, *newValue, nil); err != nil {
+			if err := n.store.Set(n.ns, key, newValue, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -170,7 +177,7 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 		return nil, error
 	}
 
-	if err := n.store.Set(n.ns, key, *newValue, nil); err != nil {
+	if err := n.store.Set(n.ns, key, newValue, nil); err != nil {
 		return nil, err
 	}
 
@@ -203,11 +210,19 @@ func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([
 			// the result from the origin and just keep this value in the response
 		}
 
-		v := val.Value.(T)
+		var v *T
+		if v1, ok := val.Value.(*T); ok {
+			v = v1
+		}
+
+		if v2, ok := val.Value.(T); ok {
+			v = &v2
+		}
+
 		returnMap[val.Key] = GetMany[T]{
 			Key:   val.Key,
-			Value: &v,
-			Found: true,
+			Value: v,
+			Found: val.Found,
 		}
 	}
 
@@ -224,10 +239,10 @@ func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([
 			}
 		}
 
-		valuesToSet := make([]SetMany[T], 0)
+		valuesToSet := make([]SetMany[*T], 0)
 		for _, v := range returnMap {
-			valuesToSet = append(valuesToSet, SetMany[T]{
-				Value: *v.Value,
+			valuesToSet = append(valuesToSet, SetMany[*T]{
+				Value: v.Value,
 				Key:   v.Key,
 				Opts:  nil,
 			})
@@ -235,6 +250,16 @@ func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([
 
 		if err := n.store.SetMany(n.ns, valuesToSet, nil); err != nil {
 			return nil, err
+		}
+	}
+
+	for _, key := range keys {
+		if _, ok := returnMap[key]; !ok {
+			returnMap[key] = GetMany[T]{
+				Key:   key,
+				Value: nil,
+				Found: false,
+			}
 		}
 	}
 

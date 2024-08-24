@@ -105,11 +105,11 @@ func main() {
 		},
 	}
 
-	usersToSet := make([]cache.SetMany[User], 0)
+	usersToSet := make([]cache.SetMany[*User], 0)
 	usersToGet := make([]string, 0)
 	for _, user := range users {
-		usersToSet = append(usersToSet, cache.SetMany[User]{
-			Value: user,
+		usersToSet = append(usersToSet, cache.SetMany[*User]{
+			Value: &user,
 			Key:   user.Email,
 			Opts:  nil,
 		})
@@ -142,10 +142,7 @@ func main() {
 
 	swrUser, err := service.cache.User.Swr("user2", func(string) (*User, error) {
 		time.Sleep(3 * time.Second)
-		return &User{
-			Name:  "User 2",
-			Email: "test2@example.com",
-		}, nil
+		return nil, nil
 	})
 
 	log.Printf("swrUser has value: %+v", swrUser)
@@ -153,7 +150,7 @@ func main() {
 	log.Printf("swrUser has error: %+v", err)
 
 	// In this case user2 is already in the cache, so we should get it via cache, user3 is not in the cache so we should get it from the origin
-	swrUsers, err := service.cache.User.SwrMany([]string{"user2", "user3"}, func(s []string) ([]cache.GetMany[User], error) {
+	swrUsers, err := service.cache.User.SwrMany([]string{"user2", "user3", "user4"}, func(s []string) ([]cache.GetMany[User], error) {
 		return []cache.GetMany[User]{
 			{
 				Key: "user3",
