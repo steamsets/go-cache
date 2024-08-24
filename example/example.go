@@ -9,6 +9,11 @@ import (
 	redisStore "github.com/steamsets/go-cache/store/redis"
 )
 
+type Cache struct {
+	User cache.Namespace[User]
+	Post cache.Namespace[Post]
+}
+
 type User struct {
 	Name  string
 	Email string
@@ -19,12 +24,13 @@ type Post struct {
 	Description string
 }
 
-type Cache struct {
-	User cache.Namespace[User]
-	Post cache.Namespace[Post]
+type Service struct {
+	cache *Cache
 }
 
-func main() {
+var service *Service
+
+func init() {
 	memory := memoryStore.New(memoryStore.Config{
 		UnstableEvictOnSet: &memoryStore.UnstableEvictOnSetConfig{
 			Frequency: 1,
@@ -45,19 +51,25 @@ func main() {
 			Stores: []cache.Store{
 				redis,
 			},
-			Fresh: 1 * time.Second,
-			Stale: 2 * time.Second,
+			Fresh: 45 * time.Minute,
+			Stale: 45 * time.Minute,
 		}),
 		Post: cache.NewNamespace[Post]("post", nil, cache.NamespaceConfig{
 			Stores: []cache.Store{
 				memory,
 				redis,
 			},
-			Fresh: 10 * time.Second,
-			Stale: 10 * time.Second,
+			Fresh: 10 * time.Minute,
+			Stale: 10 * time.Minute,
 		}),
 	}
 
+	service = &Service{
+		cache: &c,
+	}
+}
+
+func main() {
 	u := User{
 		Name:  "Flo",
 		Email: "test@example.com",
@@ -68,34 +80,67 @@ func main() {
 		Description: "This is a test post",
 	}
 
-	err := c.User.Set("user1", u, nil)
+	err := service.cache.User.Set("user1", u, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = c.Post.Set("post1", p, nil)
+	err = service.cache.Post.Set("post1", p, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	c.User.SetMany(map[string]User{
-		"user1": u,
-	}, nil)
+	users := []User{
+		{
+			Name:  "Flo",
+			Email: "test1@example.com",
+		},
+		{
+			Name:  "Flo",
+			Email: "test2@example.com",
+		},
+		{
+			Name:  "Flo",
+			Email: "test3@example.com",
+		},
+	}
 
-	many := c.User.GetMany([]string{"user1"})
+	usersToSet := make([]cache.SetMany[User], 0)
+	usersToGet := make([]string, 0)
+	for _, user := range users {
+		usersToSet = append(usersToSet, cache.SetMany[User]{
+			Value: user,
+			Key:   user.Email,
+			Opts:  nil,
+		})
+
+		usersToGet = append(usersToGet, user.Email)
+	}
+
+	setManyError := service.cache.User.SetMany(usersToSet, nil)
+	if setManyError != nil {
+		log.Fatal(setManyError)
+	}
+
+	many, err := service.cache.User.GetMany(usersToGet)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for _, m := range many {
 		log.Printf("m.Key: %s", m.Key)
 		log.Printf("m.Value: %+v", m.Value)
 		log.Printf("m.found: %+v", m.Found)
 	}
 
-	getUser, found, err := c.User.Get("user1")
+	getUser, found, err := service.cache.User.Get("user1")
 
 	log.Printf("getUser has value: %+v", getUser)
 	log.Printf("getUser has found: %+v", found)
 	log.Printf("getUser has error: %+v", err)
 
-	swrUser, found, err := c.User.Swr("user2", func(string) (*User, error) {
+	swrUser, err := service.cache.User.Swr("user2", func(string) (*User, error) {
 		time.Sleep(3 * time.Second)
 		return &User{
 			Name:  "User 2",
@@ -107,15 +152,33 @@ func main() {
 	log.Printf("swrUser has found: %+v", found)
 	log.Printf("swrUser has error: %+v", err)
 
-	c.User.Remove([]string{"user1"})
+	// In this case user2 is already in the cache, so we should get it via cache, user3 is not in the cache so we should get it from the origin
+	swrUsers, err := service.cache.User.SwrMany([]string{"user2", "user3"}, func(s []string) ([]cache.GetMany[User], error) {
+		return []cache.GetMany[User]{
+			{
+				Key: "user3",
+				Value: &User{
+					Name:  "User 3",
+					Email: "test3@example.com",
+				},
+				Found: true,
+			},
+		}, nil
+	})
 
-	getUser, found, err = c.User.Get("user1")
+	for idx, user := range swrUsers {
+		log.Printf("swrUsers [%d] has value: %+v", idx, user.Value)
+	}
+
+	service.cache.User.Remove([]string{"user1"})
+
+	getUser, found, err = service.cache.User.Get("user1")
 
 	log.Printf("getUser is now value: %+v", getUser)
 	log.Printf("getUser is now found: %+v", found)
 	log.Printf("getUser is now error: %+v", err)
 
-	getPost, found, err := c.Post.Get("post1")
+	getPost, found, err := service.cache.Post.Get("post1")
 
 	log.Printf("getPost has value: %+v", getPost)
 	log.Printf("getPost has found: %+v", found)

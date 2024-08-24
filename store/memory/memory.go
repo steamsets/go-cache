@@ -61,6 +61,10 @@ func (m *MemoryStore) Get(ns types.TNamespace, key string, T any) (value types.T
 	return value, true, nil
 }
 
+func (m *MemoryStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
+	panic("Not implemented yet")
+}
+
 func (m *MemoryStore) Set(ns types.TNamespace, key string, value types.TValue) error {
 	m.mutex.Lock()
 	k := m.CreateCacheKey(ns, key)
@@ -83,6 +87,17 @@ func (m *MemoryStore) Set(ns types.TNamespace, key string, value types.TValue) e
 
 				delete(m.state, k)
 			}
+		}
+	}
+
+	return nil
+}
+
+// This just wraps around the set function
+func (m *MemoryStore) SetMany(ns types.TNamespace, values []types.TValue, opts *types.SetOptions) error {
+	for _, v := range values {
+		if err := m.Set(ns, v.Key, v); err != nil {
+			return err
 		}
 	}
 

@@ -8,6 +8,8 @@ import (
 )
 
 type TValue struct {
+	Found      bool   // Whether the value was found or not -> used by GetMany
+	Key        string // Optionally the key that was used to get/set the value, incase of we retrieve multiple values
 	Value      interface{}
 	FreshUntil time.Time
 	StaleUntil time.Time

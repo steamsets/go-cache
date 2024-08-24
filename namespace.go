@@ -2,7 +2,9 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,13 +26,11 @@ type NamespaceConfig struct {
 }
 
 func NewNamespace[T any](ns types.TNamespace, ctx context.Context, cfg NamespaceConfig) Namespace[T] {
-	tieredCache := newTieredCache[T](types.TNamespace(ns), cfg.Stores, cfg.Fresh, cfg.Stale)
-
 	return Namespace[T]{
 		ns:           ns,
 		fresh:        cfg.Fresh,
 		stale:        cfg.Stale,
-		store:        tieredCache,
+		store:        newTieredCache[T](ns, cfg.Stores, cfg.Fresh, cfg.Stale),
 		revalidating: &sync.Map{},
 	}
 }
@@ -57,13 +57,11 @@ func (n Namespace[T]) Get(key string) (value *T, found bool, err error) {
 }
 
 func (n Namespace[T]) Set(key string, value T, opts *types.SetOptions) error {
-	return n.store.Set(n.ns, key, value, opts)
-}
+	if key == "" {
+		return errors.New("key is empty")
+	}
 
-type SetMany[T any] struct {
-	Value T
-	Key   string
-	Opts  *types.SetOptions
+	return n.store.Set(n.ns, key, value, opts)
 }
 
 type GetMany[T any] struct {
@@ -72,24 +70,81 @@ type GetMany[T any] struct {
 	Found bool
 }
 
-func (n Namespace[T]) GetMany([]string) []GetMany[T] {
+func (n Namespace[T]) GetMany(keys []string) ([]GetMany[T], error) {
+	if len(keys) == 0 {
+		return nil, errors.New("no keys provided")
+	}
 
-	return nil
+	values, err := n.store.GetMany(n.ns, keys)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]GetMany[T], 0)
+	toRemove := make([]string, 0)
+
+	for _, val := range values {
+		if val.Value == nil {
+			ret = append(ret, GetMany[T]{
+				Key:   val.Key,
+				Value: nil,
+				Found: false,
+			})
+
+			continue
+		}
+
+		if time.Now().After(val.StaleUntil) {
+			toRemove = append(toRemove, val.Key)
+		}
+
+		v := val.Value.(T)
+		ret = append(ret, GetMany[T]{
+			Key:   val.Key,
+			Value: &v,
+			Found: true,
+		})
+	}
+
+	if len(toRemove) > 0 {
+		if err := n.store.Remove(n.ns, toRemove); err != nil {
+			return nil, err
+		}
+	}
+
+	return ret, nil
 }
 
-func (n Namespace[T]) SetMany(values map[string]T, opts *types.SetOptions) error {
-
-	return nil
+type SetMany[T any] struct {
+	Value T
+	Key   string
+	Opts  *types.SetOptions
 }
 
-func (n Namespace[T]) Remove(key []string) error {
-	return n.store.Remove(n.ns, key)
+func (n Namespace[T]) SetMany(values []SetMany[T], opts *types.SetOptions) error {
+	if len(values) == 0 {
+		return errors.New("no values provided")
+	}
+
+	return n.store.SetMany(n.ns, values, opts)
 }
 
-func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)) (*T, bool, error) {
+func (n Namespace[T]) Remove(keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	return n.store.Remove(n.ns, keys)
+}
+
+func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)) (*T, error) {
+	if key == "" {
+		return nil, errors.New("key is empty")
+	}
+
 	value, found, err := n.store.Get(n.ns, key)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	now := time.Now()
@@ -98,32 +153,106 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 		if now.After(value.FreshUntil) {
 			newValue, error := n.deduplicateLoadFromOrigin(n.ns, key, refreshFromOrigin)
 			if error != nil {
-				return nil, found, error
+				return nil, error
 			}
 
 			if err := n.store.Set(n.ns, key, *newValue, nil); err != nil {
-				return nil, found, err
+				return nil, err
 			}
 		}
 
 		v := value.Value.(T)
-		return &v, found, nil
+		return &v, nil
 	}
 
 	newValue, error := n.deduplicateLoadFromOrigin(n.ns, key, refreshFromOrigin)
 	if error != nil {
-		return nil, found, error
+		return nil, error
 	}
 
 	if err := n.store.Set(n.ns, key, *newValue, nil); err != nil {
-		return nil, found, err
+		return nil, err
 	}
 
-	return newValue, found, nil
+	return newValue, nil
+}
+
+func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
+	if len(keys) == 0 {
+		return nil, errors.New("no keys provided")
+	}
+
+	values, err := n.store.GetMany(n.ns, keys)
+
+	if err != nil {
+		return nil, err
+	}
+
+	returnMap := make(map[string]GetMany[T])
+	keysToFetchFromOrigin := make([]string, 0)
+
+	for _, val := range values {
+		if !val.Found {
+			keysToFetchFromOrigin = append(keysToFetchFromOrigin, val.Key)
+			continue
+		}
+
+		if time.Now().After(val.StaleUntil) {
+			keysToFetchFromOrigin = append(keysToFetchFromOrigin, val.Key)
+			// We want to get the new value from the origin but will remove
+			// the result from the origin and just keep this value in the response
+		}
+
+		v := val.Value.(T)
+		returnMap[val.Key] = GetMany[T]{
+			Key:   val.Key,
+			Value: &v,
+			Found: true,
+		}
+	}
+
+	// if we have keys to get, we need to get them
+	if len(keysToFetchFromOrigin) > 0 {
+		values, err := n.deduplicateLoadFromOriginMany(n.ns, keysToFetchFromOrigin, refreshFromOrigin)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, v := range values {
+			if _, ok := returnMap[v.Key]; !ok {
+				returnMap[v.Key] = v
+			}
+		}
+
+		valuesToSet := make([]SetMany[T], 0)
+		for _, v := range returnMap {
+			valuesToSet = append(valuesToSet, SetMany[T]{
+				Value: *v.Value,
+				Key:   v.Key,
+				Opts:  nil,
+			})
+		}
+
+		if err := n.store.SetMany(n.ns, valuesToSet, nil); err != nil {
+			return nil, err
+		}
+	}
+
+	returnValues := make([]GetMany[T], 0)
+	for _, v := range returnMap {
+		returnValues = append(returnValues, v)
+	}
+
+	return returnValues, nil
 }
 
 type deduplicateEntry[T any] struct {
 	value *T
+	err   error
+}
+
+type deduplicateManyEntry[T any] struct {
+	value []GetMany[T]
 	err   error
 }
 
@@ -149,4 +278,28 @@ func (n Namespace[T]) deduplicateLoadFromOrigin(ns types.TNamespace, key string,
 	future <- deduplicateEntry[T]{value, err}
 
 	return value, err
+}
+
+func (n Namespace[T]) deduplicateLoadFromOriginMany(ns types.TNamespace, keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
+	revalidateKey := fmt.Sprintf("%s::%s", ns, strings.Join(keys, ","))
+
+	// if we are currently revalidating this key, wait for the result (hopefully)
+	if val, ok := n.revalidating.Load(revalidateKey); ok {
+		future := val.(chan deduplicateManyEntry[T])
+		result := <-future
+		return result.value, result.err
+	}
+
+	future := make(chan deduplicateManyEntry[T], 1)
+
+	n.revalidating.Store(revalidateKey, future)
+
+	defer n.revalidating.Delete(revalidateKey)
+
+	values, err := refreshFromOrigin(keys)
+
+	// Send the result through the channel
+	future <- deduplicateManyEntry[T]{values, err}
+
+	return values, err
 }
