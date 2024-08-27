@@ -46,14 +46,7 @@ func (n Namespace[T]) Get(key string) (value *T, found bool, err error) {
 		return nil, false, nil
 	}
 
-	var v *T
-	if v1, ok := val.Value.(T); ok {
-		v = &v1
-	}
-
-	if v2, ok := val.Value.(*T); ok {
-		v = v2
-	}
+	v := getT[T](val.Value)
 
 	if time.Now().After(val.StaleUntil) {
 		n.store.Remove(n.ns, []string{key})
@@ -105,10 +98,11 @@ func (n Namespace[T]) GetMany(keys []string) ([]GetMany[T], error) {
 			toRemove = append(toRemove, val.Key)
 		}
 
-		v := val.Value.(T)
+		v := getT[T](val.Value)
+
 		ret = append(ret, GetMany[T]{
 			Key:   val.Key,
-			Value: &v,
+			Value: v,
 			Found: val.Found,
 		})
 	}
@@ -168,8 +162,9 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 			}
 		}
 
-		v := value.Value.(T)
-		return &v, nil
+		v := getT[T](value.Value)
+
+		return v, nil
 	}
 
 	newValue, error := n.deduplicateLoadFromOrigin(n.ns, key, refreshFromOrigin)
@@ -182,6 +177,18 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 	}
 
 	return newValue, nil
+}
+
+func getT[T any](val interface{}) *T {
+	if v1, ok := val.(T); ok {
+		return &v1
+	}
+
+	if v2, ok := val.(*T); ok {
+		return v2
+	}
+
+	return nil
 }
 
 func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
@@ -210,14 +217,7 @@ func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([
 			// the result from the origin and just keep this value in the response
 		}
 
-		var v *T
-		if v1, ok := val.Value.(*T); ok {
-			v = v1
-		}
-
-		if v2, ok := val.Value.(T); ok {
-			v = &v2
-		}
+		v := getT[T](val.Value)
 
 		returnMap[val.Key] = GetMany[T]{
 			Key:   val.Key,

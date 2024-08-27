@@ -78,7 +78,7 @@ func init() {
 		},
 	})
 
-	redis := redisStore.NewRedisStore(redisStore.Config{
+	redis := redisStore.New(redisStore.Config{
 		Host:     "localhost",
 		Port:     6379,
 		Username: "",

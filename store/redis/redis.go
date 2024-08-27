@@ -23,7 +23,7 @@ type Config struct {
 	Database int
 }
 
-func NewRedisStore(cfg Config) *RedisStore {
+func New(cfg Config) *RedisStore {
 	client, err := rueidis.NewClient(
 		rueidis.ClientOption{
 			SelectDB:    cfg.Database,
