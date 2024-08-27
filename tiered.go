@@ -108,18 +108,20 @@ func (t tieredCache[T]) GetMany(ns types.TNamespace, keys []string) ([]types.TVa
 
 		for _, v := range values {
 
-			// Since we found it set it to the lower stores
-			valuesToSet = append(valuesToSet, v)
+			if v.Found {
+				// Since we found it set it to the lower stores
+				valuesToSet = append(valuesToSet, v)
 
-			// But we should not look for it again
-			for i, k := range keysToFind {
-				if k == v.Key {
-					keysToFind = slices.Delete(keysToFind, i, i+1)
-					break
+				// But we should not look for it again
+				for i, k := range keysToFind {
+					if k == v.Key {
+						keysToFind = slices.Delete(keysToFind, i, i+1)
+						break
+					}
 				}
-			}
 
-			foundValues[v.Key] = v
+				foundValues[v.Key] = v
+			}
 		}
 
 		if len(valuesToSet) > 0 {

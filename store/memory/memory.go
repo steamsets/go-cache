@@ -62,7 +62,25 @@ func (m *MemoryStore) Get(ns types.TNamespace, key string, T any) (value types.T
 }
 
 func (m *MemoryStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
-	panic("Not implemented yet")
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	values := make([]types.TValue, 0)
+	for _, k := range keys {
+		v, found := m.state[m.CreateCacheKey(ns, k)]
+		if !found {
+			v = types.TValue{
+				Found: false,
+				Value: nil,
+				Key:   k,
+			}
+			continue
+		}
+
+		values = append(values, v)
+	}
+
+	return values, nil
 }
 
 func (m *MemoryStore) Set(ns types.TNamespace, key string, value types.TValue) error {

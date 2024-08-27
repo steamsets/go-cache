@@ -49,6 +49,7 @@ func init() {
 	c := Cache{
 		User: cache.NewNamespace[User]("user", nil, cache.NamespaceConfig{
 			Stores: []cache.Store{
+				memory,
 				redis,
 			},
 			Fresh: 45 * time.Minute,
@@ -142,7 +143,10 @@ func main() {
 
 	swrUser, err := service.cache.User.Swr("user2", func(string) (*User, error) {
 		time.Sleep(3 * time.Second)
-		return nil, nil
+		return &User{
+			Name:  "Flo (User2)",
+			Email: "test2@example.com",
+		}, nil
 	})
 
 	log.Printf("swrUser has value: %+v", swrUser)
