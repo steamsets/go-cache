@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/goccy/go-json"
 	"github.com/redis/rueidis"
@@ -13,24 +14,33 @@ import (
 type RedisStore struct {
 	name   string
 	client rueidis.Client
+	config Config
 }
 
 type Config struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
-	Database int
+	UseClientCache bool
+	CacheTime      *time.Duration
+	Host           string
+	Port           int
+	Username       string
+	Password       string
+	Database       int
 }
 
 func New(cfg Config) *RedisStore {
+	if cfg.UseClientCache && cfg.CacheTime == nil {
+		t := time.Minute * 15
+		cfg.CacheTime = &t
+	}
+
 	client, err := rueidis.NewClient(
 		rueidis.ClientOption{
-			SelectDB:    cfg.Database,
-			InitAddress: []string{cfg.Host + ":" + strconv.Itoa(cfg.Port)},
-			Username:    cfg.Username,
-			Password:    cfg.Password,
-			ClientName:  "go-cache",
+			SelectDB:     cfg.Database,
+			InitAddress:  []string{cfg.Host + ":" + strconv.Itoa(cfg.Port)},
+			Username:     cfg.Username,
+			Password:     cfg.Password,
+			ClientName:   "go-cache",
+			DisableCache: !(cfg.UseClientCache),
 		},
 	)
 	if err != nil {
@@ -38,6 +48,7 @@ func New(cfg Config) *RedisStore {
 	}
 
 	return &RedisStore{
+		config: cfg,
 		client: client,
 		name:   "redis",
 	}
@@ -52,7 +63,12 @@ func (r *RedisStore) CreateCacheKey(namespace types.TNamespace, key string) stri
 }
 
 func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TValue, found bool, err error) {
-	resp := r.client.Do(context.Background(), r.client.B().Get().Key(r.CreateCacheKey(ns, key)).Build())
+	var resp rueidis.RedisResult
+	if r.config.UseClientCache {
+		resp = r.client.DoCache(context.Background(), r.client.B().Get().Key(r.CreateCacheKey(ns, key)).Cache(), *r.config.CacheTime)
+	} else {
+		resp = r.client.Do(context.Background(), r.client.B().Get().Key(r.CreateCacheKey(ns, key)).Build())
+	}
 
 	msg, err := resp.ToMessage()
 	if err == rueidis.Nil {
@@ -79,12 +95,21 @@ func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TV
 }
 
 func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
-	cmds := make([]rueidis.Completed, 0)
-	for _, k := range keys {
-		cmds = append(cmds, r.client.B().Get().Key(r.CreateCacheKey(ns, k)).Build())
-	}
+	var res []rueidis.RedisResult
+	if r.config.UseClientCache {
+		cmds := make([]rueidis.CacheableTTL, 0)
+		for _, k := range keys {
+			cmds = append(cmds, rueidis.CT(r.client.B().Get().Key(r.CreateCacheKey(ns, k)).Cache(), *r.config.CacheTime))
+		}
+		res = r.client.DoMultiCache(context.Background(), cmds...)
+	} else {
+		cmds := make([]rueidis.Completed, 0)
+		for _, k := range keys {
+			cmds = append(cmds, r.client.B().Get().Key(r.CreateCacheKey(ns, k)).Build())
+		}
 
-	res := r.client.DoMulti(context.Background(), cmds...)
+		res = r.client.DoMulti(context.Background(), cmds...)
+	}
 
 	values := make([]types.TValue, 0)
 	for idx, cmd := range res {
