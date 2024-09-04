@@ -8,21 +8,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/steamsets/go-cache/pkg/telemetry"
 	"github.com/steamsets/go-cache/pkg/types"
 )
 
 type Namespace[T any] struct {
 	fresh        time.Duration
 	stale        time.Duration
+	telemetry    bool
 	ns           types.TNamespace
 	store        tieredCache[T]
 	revalidating *sync.Map
 }
 
 type NamespaceConfig struct {
-	Stores []Store
-	Fresh  time.Duration
-	Stale  time.Duration
+	Stores    []Store
+	Telemetry bool
+	Fresh     time.Duration
+	Stale     time.Duration
 }
 
 func NewNamespace[T any](ns types.TNamespace, ctx context.Context, cfg NamespaceConfig) Namespace[T] {
@@ -30,13 +33,20 @@ func NewNamespace[T any](ns types.TNamespace, ctx context.Context, cfg Namespace
 		ns:           ns,
 		fresh:        cfg.Fresh,
 		stale:        cfg.Stale,
-		store:        newTieredCache[T](ns, cfg.Stores, cfg.Fresh, cfg.Stale),
+		store:        newTieredCache[T](ns, cfg.Stores, cfg.Fresh, cfg.Stale, cfg.Telemetry),
 		revalidating: &sync.Map{},
 	}
 }
 
-func (n Namespace[T]) Get(key string) (value *T, found bool, err error) {
-	val, found, err := n.store.Get(n.ns, key)
+func (n Namespace[T]) Get(ctx context.Context, key string) (value *T, found bool, err error) {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.get")
+	defer span.End()
+	telemetry.WithAttributes(span,
+		telemetry.AttributeKV{Key: "key", Value: key},
+		telemetry.AttributeKV{Key: "namespace", Value: string(n.ns)},
+	)
+
+	val, found, err := n.store.Get(ctx, n.ns, key)
 
 	if err != nil {
 		return nil, false, err
@@ -49,19 +59,26 @@ func (n Namespace[T]) Get(key string) (value *T, found bool, err error) {
 	v := getT[T](val.Value)
 
 	if time.Now().After(val.StaleUntil) {
-		n.store.Remove(n.ns, []string{key})
+		n.store.Remove(ctx, n.ns, []string{key})
 		return nil, false, nil
 	}
 
 	return v, found, nil
 }
 
-func (n Namespace[T]) Set(key string, value T, opts *types.SetOptions) error {
+func (n Namespace[T]) Set(ctx context.Context, key string, value T, opts *types.SetOptions) error {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.set")
+	defer span.End()
+	telemetry.WithAttributes(span,
+		telemetry.AttributeKV{Key: "key", Value: key},
+		telemetry.AttributeKV{Key: "namespace", Value: string(n.ns)},
+	)
+
 	if key == "" {
 		return errors.New("key is empty")
 	}
 
-	return n.store.Set(n.ns, key, &value, opts)
+	return n.store.Set(ctx, n.ns, key, &value, opts)
 }
 
 type GetMany[T any] struct {
@@ -70,12 +87,19 @@ type GetMany[T any] struct {
 	Found bool
 }
 
-func (n Namespace[T]) GetMany(keys []string) ([]GetMany[T], error) {
+func (n Namespace[T]) GetMany(ctx context.Context, keys []string) ([]GetMany[T], error) {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.get-many")
+	defer span.End()
+	telemetry.WithAttributes(span,
+		telemetry.AttributeKV{Key: "keys", Value: keys},
+		telemetry.AttributeKV{Key: "namespace", Value: string(n.ns)},
+	)
+
 	if len(keys) == 0 {
 		return nil, errors.New("no keys provided")
 	}
 
-	values, err := n.store.GetMany(n.ns, keys)
+	values, err := n.store.GetMany(ctx, n.ns, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +132,7 @@ func (n Namespace[T]) GetMany(keys []string) ([]GetMany[T], error) {
 	}
 
 	if len(toRemove) > 0 {
-		if err := n.store.Remove(n.ns, toRemove); err != nil {
+		if err := n.store.Remove(ctx, n.ns, toRemove); err != nil {
 			return nil, err
 		}
 	}
@@ -122,28 +146,37 @@ type SetMany[T any] struct {
 	Opts  *types.SetOptions
 }
 
-func (n Namespace[T]) SetMany(values []SetMany[*T], opts *types.SetOptions) error {
+func (n Namespace[T]) SetMany(ctx context.Context, values []SetMany[*T], opts *types.SetOptions) error {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.set-many")
+	defer span.End()
+
 	if len(values) == 0 {
 		return errors.New("no values provided")
 	}
 
-	return n.store.SetMany(n.ns, values, opts)
+	return n.store.SetMany(ctx, n.ns, values, opts)
 }
 
-func (n Namespace[T]) Remove(keys []string) error {
+func (n Namespace[T]) Remove(ctx context.Context, keys []string) error {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.remove")
+	defer span.End()
+
 	if len(keys) == 0 {
 		return nil
 	}
 
-	return n.store.Remove(n.ns, keys)
+	return n.store.Remove(ctx, n.ns, keys)
 }
 
-func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)) (*T, error) {
+func (n Namespace[T]) Swr(ctx context.Context, key string, refreshFromOrigin func(string) (*T, error)) (*T, error) {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.swr")
+	defer span.End()
+
 	if key == "" {
 		return nil, errors.New("key is empty")
 	}
 
-	value, found, err := n.store.Get(n.ns, key)
+	value, found, err := n.store.Get(ctx, n.ns, key)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +185,12 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 
 	if found {
 		if now.After(value.FreshUntil) {
-			newValue, error := n.deduplicateLoadFromOrigin(n.ns, key, refreshFromOrigin)
+			newValue, error := n.deduplicateLoadFromOrigin(ctx, n.ns, key, refreshFromOrigin)
 			if error != nil {
 				return nil, error
 			}
 
-			if err := n.store.Set(n.ns, key, newValue, nil); err != nil {
+			if err := n.store.Set(ctx, n.ns, key, newValue, nil); err != nil {
 				return nil, err
 			}
 		}
@@ -167,12 +200,12 @@ func (n Namespace[T]) Swr(key string, refreshFromOrigin func(string) (*T, error)
 		return v, nil
 	}
 
-	newValue, error := n.deduplicateLoadFromOrigin(n.ns, key, refreshFromOrigin)
+	newValue, error := n.deduplicateLoadFromOrigin(ctx, n.ns, key, refreshFromOrigin)
 	if error != nil {
 		return nil, error
 	}
 
-	if err := n.store.Set(n.ns, key, newValue, nil); err != nil {
+	if err := n.store.Set(ctx, n.ns, key, newValue, nil); err != nil {
 		return nil, err
 	}
 
@@ -191,12 +224,15 @@ func getT[T any](val interface{}) *T {
 	return nil
 }
 
-func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
+func (n Namespace[T]) SwrMany(ctx context.Context, keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.swr-many")
+	defer span.End()
+
 	if len(keys) == 0 {
 		return nil, errors.New("no keys provided")
 	}
 
-	values, err := n.store.GetMany(n.ns, keys)
+	values, err := n.store.GetMany(ctx, n.ns, keys)
 
 	if err != nil {
 		return nil, err
@@ -228,7 +264,7 @@ func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([
 
 	// if we have keys to get, we need to get them
 	if len(keysToFetchFromOrigin) > 0 {
-		values, err := n.deduplicateLoadFromOriginMany(n.ns, keysToFetchFromOrigin, refreshFromOrigin)
+		values, err := n.deduplicateLoadFromOriginMany(ctx, n.ns, keysToFetchFromOrigin, refreshFromOrigin)
 		if err != nil {
 			return nil, err
 		}
@@ -248,7 +284,7 @@ func (n Namespace[T]) SwrMany(keys []string, refreshFromOrigin func([]string) ([
 			})
 		}
 
-		if err := n.store.SetMany(n.ns, valuesToSet, nil); err != nil {
+		if err := n.store.SetMany(ctx, n.ns, valuesToSet, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -281,7 +317,10 @@ type deduplicateManyEntry[T any] struct {
 	err   error
 }
 
-func (n Namespace[T]) deduplicateLoadFromOrigin(ns types.TNamespace, key string, refreshFromOrigin func(string) (*T, error)) (*T, error) {
+func (n Namespace[T]) deduplicateLoadFromOrigin(ctx context.Context, ns types.TNamespace, key string, refreshFromOrigin func(string) (*T, error)) (*T, error) {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.deduplicate-load-from-origin")
+	defer span.End()
+
 	revalidateKey := fmt.Sprintf("%s::%s", ns, key)
 
 	// if we are currently revalidating this key, wait for the result (hopefully)
@@ -305,7 +344,10 @@ func (n Namespace[T]) deduplicateLoadFromOrigin(ns types.TNamespace, key string,
 	return value, err
 }
 
-func (n Namespace[T]) deduplicateLoadFromOriginMany(ns types.TNamespace, keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
+func (n Namespace[T]) deduplicateLoadFromOriginMany(ctx context.Context, ns types.TNamespace, keys []string, refreshFromOrigin func([]string) ([]GetMany[T], error)) ([]GetMany[T], error) {
+	ctx, span := telemetry.NewSpan(ctx, "namespace.deduplicate-load-from-origin-many")
+	defer span.End()
+
 	revalidateKey := fmt.Sprintf("%s::%s", ns, strings.Join(keys, ","))
 
 	// if we are currently revalidating this key, wait for the result (hopefully)

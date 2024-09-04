@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -81,12 +82,14 @@ func main() {
 		Description: "This is a test post",
 	}
 
-	err := service.cache.User.Set("user1", u, nil)
+	ctx := context.Background()
+
+	err := service.cache.User.Set(ctx, "user1", u, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = service.cache.Post.Set("post1", p, nil)
+	err = service.cache.Post.Set(ctx, "post1", p, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -118,12 +121,12 @@ func main() {
 		usersToGet = append(usersToGet, user.Email)
 	}
 
-	setManyError := service.cache.User.SetMany(usersToSet, nil)
+	setManyError := service.cache.User.SetMany(ctx, usersToSet, nil)
 	if setManyError != nil {
 		log.Fatal(setManyError)
 	}
 
-	many, err := service.cache.User.GetMany(usersToGet)
+	many, err := service.cache.User.GetMany(ctx, usersToGet)
 
 	if err != nil {
 		log.Fatal(err)
@@ -135,13 +138,13 @@ func main() {
 		log.Printf("m.found: %+v", m.Found)
 	}
 
-	getUser, found, err := service.cache.User.Get("user1")
+	getUser, found, err := service.cache.User.Get(ctx, "user1")
 
 	log.Printf("getUser has value: %+v", getUser)
 	log.Printf("getUser has found: %+v", found)
 	log.Printf("getUser has error: %+v", err)
 
-	swrUser, err := service.cache.User.Swr("user2", func(string) (*User, error) {
+	swrUser, err := service.cache.User.Swr(ctx, "user2", func(string) (*User, error) {
 		time.Sleep(3 * time.Second)
 		return &User{
 			Name:  "Flo (User2)",
@@ -154,7 +157,7 @@ func main() {
 	log.Printf("swrUser has error: %+v", err)
 
 	// In this case user2 is already in the cache, so we should get it via cache, user3 is not in the cache so we should get it from the origin
-	swrUsers, err := service.cache.User.SwrMany([]string{"user2", "user3", "user4"}, func(s []string) ([]cache.GetMany[User], error) {
+	swrUsers, err := service.cache.User.SwrMany(ctx, []string{"user2", "user3", "user4"}, func(s []string) ([]cache.GetMany[User], error) {
 		return []cache.GetMany[User]{
 			{
 				Key: "user3",
@@ -171,15 +174,15 @@ func main() {
 		log.Printf("swrUsers [%d] has value: %+v", idx, user.Value)
 	}
 
-	service.cache.User.Remove([]string{"user1"})
+	service.cache.User.Remove(ctx, []string{"user1"})
 
-	getUser, found, err = service.cache.User.Get("user1")
+	getUser, found, err = service.cache.User.Get(ctx, "user1")
 
 	log.Printf("getUser is now value: %+v", getUser)
 	log.Printf("getUser is now found: %+v", found)
 	log.Printf("getUser is now error: %+v", err)
 
-	getPost, found, err := service.cache.Post.Get("post1")
+	getPost, found, err := service.cache.Post.Get(ctx, "post1")
 
 	log.Printf("getPost has value: %+v", getPost)
 	log.Printf("getPost has found: %+v", found)
