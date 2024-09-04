@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -20,10 +19,7 @@ type RedisStore struct {
 type Config struct {
 	UseClientCache bool
 	CacheTime      *time.Duration
-	Host           string
-	Port           int
-	Username       string
-	Password       string
+	DSN            string
 	Database       int
 }
 
@@ -33,16 +29,12 @@ func New(cfg Config) *RedisStore {
 		cfg.CacheTime = &t
 	}
 
-	client, err := rueidis.NewClient(
-		rueidis.ClientOption{
-			SelectDB:     cfg.Database,
-			InitAddress:  []string{cfg.Host + ":" + strconv.Itoa(cfg.Port)},
-			Username:     cfg.Username,
-			Password:     cfg.Password,
-			ClientName:   "go-cache",
-			DisableCache: !(cfg.UseClientCache),
-		},
-	)
+	clientCfg := rueidis.MustParseURL(cfg.DSN)
+	clientCfg.SelectDB = cfg.Database
+	clientCfg.ClientName = "go-cache"
+	clientCfg.DisableCache = !(cfg.UseClientCache)
+	client, err := rueidis.NewClient(clientCfg)
+
 	if err != nil {
 		panic(err)
 	}

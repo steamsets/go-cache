@@ -39,11 +39,9 @@ func init() {
 		},
 	})
 
+	dsn := "redis://localhost:6379/0"
 	redis := redisStore.New(redisStore.Config{
-		Host:     "localhost",
-		Port:     6379,
-		Username: "",
-		Password: "",
+		DSN:      dsn,
 		Database: 0,
 	})
 
