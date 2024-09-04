@@ -59,7 +59,7 @@ func (t tieredCache[T]) Get(ctx context.Context, ns types.TNamespace, key string
 		return nil, false, errors.New("no stores found")
 	}
 
-	for idx, store := range t.stores {
+	for _, store := range t.stores {
 		var result T
 		ctx, span := telemetry.NewSpan(ctx, store.Name()+".get")
 		defer span.End()
@@ -74,9 +74,9 @@ func (t tieredCache[T]) Get(ctx context.Context, ns types.TNamespace, key string
 		}
 
 		if value.Value != nil {
-			for lIdx, lowerStore := range t.stores {
+			for _, lowerStore := range t.stores {
 				// No need to reset the value in our current store, just in all other ones.
-				if lIdx == idx {
+				if store.Name() == lowerStore.Name() {
 					continue
 				}
 
@@ -125,7 +125,7 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 	keysToFind := make([]string, len(keys))
 	copy(keysToFind, keys)
 
-	for idx, store := range t.stores {
+	for _, store := range t.stores {
 		// we already found all keys
 		if len(keysToFind) == 0 {
 			break
@@ -162,8 +162,8 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 		}
 
 		if len(valuesToSet) > 0 {
-			for lIdx, lowerStore := range t.stores {
-				if lIdx == idx {
+			for _, lowerStore := range t.stores {
+				if lowerStore.Name() == store.Name() {
 					continue
 				}
 
