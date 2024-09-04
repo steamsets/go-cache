@@ -52,7 +52,7 @@ func getStaleFreshTime(now time.Time, freshDuration time.Duration, staleDuration
 }
 
 func (t tieredCache[T]) Get(ctx context.Context, ns types.TNamespace, key string) (*types.TValue, bool, error) {
-	ctx, span := telemetry.NewSpan(ctx, "tiered.get-many")
+	ctx, span := telemetry.NewSpan(ctx, "tiered.get")
 	defer span.End()
 
 	if len(t.stores) == 0 {
@@ -80,7 +80,7 @@ func (t tieredCache[T]) Get(ctx context.Context, ns types.TNamespace, key string
 					continue
 				}
 
-				_, span := telemetry.NewSpan(ctx, store.Name()+".set")
+				_, span := telemetry.NewSpan(ctx, lowerStore.Name()+".set")
 				defer span.End()
 				telemetry.WithAttributes(span,
 					telemetry.AttributeKV{Key: "key", Value: key},
@@ -167,7 +167,7 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 					continue
 				}
 
-				_, span := telemetry.NewSpan(ctx, store.Name()+".set-many")
+				_, span := telemetry.NewSpan(ctx, lowerStore.Name()+".set-many")
 				defer span.End()
 				telemetry.WithAttributes(span,
 					telemetry.AttributeKV{Key: "keys", Value: keysToFind},
@@ -204,6 +204,7 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 func (t tieredCache[T]) Set(ctx context.Context, ns types.TNamespace, key string, value *T, opts *types.SetOptions) error {
 	ctx, span := telemetry.NewSpan(ctx, "tiered.set")
 	defer span.End()
+
 	telemetry.WithAttributes(span,
 		telemetry.AttributeKV{Key: "key", Value: key},
 		telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
@@ -215,9 +216,9 @@ func (t tieredCache[T]) Set(ctx context.Context, ns types.TNamespace, key string
 
 	fresh, stale := getStaleFreshTime(time.Now(), t.fresh, t.stale, opts)
 	for _, store := range t.stores {
-		_, span := telemetry.NewSpan(ctx, store.Name()+".set")
-		defer span.End()
-		telemetry.WithAttributes(span,
+		_, span2 := telemetry.NewSpan(ctx, store.Name()+".set")
+		defer span2.End()
+		telemetry.WithAttributes(span2,
 			telemetry.AttributeKV{Key: "key", Value: key},
 			telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
 			telemetry.AttributeKV{Key: "fresh", Value: fresh.String()},
@@ -230,10 +231,10 @@ func (t tieredCache[T]) Set(ctx context.Context, ns types.TNamespace, key string
 			StaleUntil: stale,
 			Key:        key,
 		}); err != nil {
-			telemetry.RecordError(span, err)
+			telemetry.RecordError(span2, err)
 			return fault.Wrap(err, fmsg.With(store.Name()+" failed to set key: "+key))
 		}
-		span.End()
+		span2.End()
 	}
 
 	return nil
@@ -263,16 +264,17 @@ func (t *tieredCache[T]) SetMany(ctx context.Context, ns types.TNamespace, value
 	}
 
 	for _, store := range t.stores {
-		_, span := telemetry.NewSpan(ctx, store.Name()+".set-many")
-		defer span.End()
-		telemetry.WithAttributes(span,
+		_, span2 := telemetry.NewSpan(ctx, store.Name()+".set-many")
+		defer span2.End()
+		telemetry.WithAttributes(span2,
 			telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
 		)
 
 		if err := store.SetMany(t.ns, valuesToSet, opts); err != nil {
-			telemetry.RecordError(span, err)
+			telemetry.RecordError(span2, err)
 			return fault.Wrap(err, fmsg.With(store.Name()+" failed to set keys: "))
 		}
+		span2.End()
 	}
 
 	return nil
@@ -287,17 +289,18 @@ func (t *tieredCache[T]) Remove(ctx context.Context, ns types.TNamespace, keys [
 	}
 
 	for _, store := range t.stores {
-		_, span := telemetry.NewSpan(ctx, store.Name()+".remove")
-		defer span.End()
-		telemetry.WithAttributes(span,
+		_, span2 := telemetry.NewSpan(ctx, store.Name()+".remove")
+		defer span2.End()
+		telemetry.WithAttributes(span2,
 			telemetry.AttributeKV{Key: "key", Value: keys},
 			telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
 		)
 
 		if err := store.Remove(t.ns, keys); err != nil {
-			telemetry.RecordError(span, err)
+			telemetry.RecordError(span2, err)
 			return fault.Wrap(err, fmsg.With(store.Name()+" failed to remove key(s): "+strings.Join(keys, ",")))
 		}
+		span2.End()
 	}
 
 	return nil

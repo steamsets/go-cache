@@ -336,9 +336,9 @@ func (n Namespace[T]) deduplicateLoadFromOrigin(ctx context.Context, ns types.TN
 
 	defer n.revalidating.Delete(revalidateKey)
 
-	ctx, span = telemetry.NewSpan(ctx, "namespace.refreshFromOrigin")
+	_, span2 := telemetry.NewSpan(ctx, "namespace.refreshFromOrigin")
 	value, err := refreshFromOrigin(key)
-	span.End()
+	span2.End()
 
 	// Send the result through the channel
 	future <- deduplicateEntry[T]{value, err}
@@ -364,13 +364,13 @@ func (n Namespace[T]) deduplicateLoadFromOriginMany(ctx context.Context, ns type
 	n.revalidating.Store(revalidateKey, future)
 	defer n.revalidating.Delete(revalidateKey)
 
-	ctx, span = telemetry.NewSpan(ctx, "namespace.refreshFromOrigin")
-	telemetry.WithAttributes(span,
+	_, span2 := telemetry.NewSpan(ctx, "namespace.refreshFromOrigin")
+	telemetry.WithAttributes(span2,
 		telemetry.AttributeKV{Key: "keys", Value: keys},
 		telemetry.AttributeKV{Key: "namespace", Value: string(n.ns)},
 	)
 	values, err := refreshFromOrigin(keys)
-	span.End()
+	span2.End()
 
 	// Send the result through the channel
 	future <- deduplicateManyEntry[T]{values, err}
