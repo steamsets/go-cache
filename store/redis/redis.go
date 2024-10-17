@@ -87,10 +87,6 @@ func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TV
 	return value, true, nil
 }
 
-func newInstanceOf(t interface{}) interface{} {
-	return reflect.New(reflect.TypeOf(t).Elem()).Interface()
-}
-
 func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
 	var res []rueidis.RedisResult
 	if r.config.UseClientCache {
