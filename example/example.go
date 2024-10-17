@@ -15,9 +15,16 @@ type Cache struct {
 	Post cache.Namespace[Post]
 }
 
+type Address struct {
+	Street string
+	City   string
+	Zip    string
+}
+
 type User struct {
-	Name  string
-	Email string
+	Name    string
+	Email   string
+	Address *Address
 }
 
 type Post struct {
@@ -96,10 +103,20 @@ func main() {
 		{
 			Name:  "Flo",
 			Email: "test1@example.com",
+			Address: &Address{
+				Street: "Street 1",
+				City:   "City 1",
+				Zip:    "12345",
+			},
 		},
 		{
 			Name:  "Flo",
 			Email: "test2@example.com",
+			Address: &Address{
+				Street: "Street 2",
+				City:   "City 3",
+				Zip:    "54321",
+			},
 		},
 		{
 			Name:  "Flo",
@@ -162,14 +179,32 @@ func main() {
 				Value: &User{
 					Name:  "User 3",
 					Email: "test3@example.com",
+					Address: &Address{
+						Street: "Street 3",
+						City:   "City 3",
+						Zip:    "54321",
+					},
+				},
+				Found: true,
+			},
+			{
+				Key: "user4",
+				Value: &User{
+					Name:  "User 4",
+					Email: "test4@example.com",
+					Address: &Address{
+						Street: "Street 4",
+						City:   "City 4",
+						Zip:    "54321",
+					},
 				},
 				Found: true,
 			},
 		}, nil
 	})
 
-	for idx, user := range swrUsers {
-		log.Printf("swrUsers [%d] has value: %+v", idx, user.Value)
+	for _, user := range swrUsers {
+		log.Printf("swrUsers [%s] has value: %+v", user.Key, user.Value)
 	}
 
 	service.cache.User.Remove(ctx, []string{"user1"})

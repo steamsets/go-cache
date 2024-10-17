@@ -71,8 +71,8 @@ func (m *MemoryStore) Get(ns types.TNamespace, key string, T any) (value types.T
 }
 
 func (m *MemoryStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
-
 	values := make([]types.TValue, 0)
+
 	for _, k := range keys {
 		value, found := m.otter.Get(m.CreateCacheKey(ns, k))
 		if !found {

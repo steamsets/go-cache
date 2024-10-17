@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -86,6 +87,10 @@ func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TV
 	return value, true, nil
 }
 
+func newInstanceOf(t interface{}) interface{} {
+	return reflect.New(reflect.TypeOf(t).Elem()).Interface()
+}
+
 func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
 	var res []rueidis.RedisResult
 	if r.config.UseClientCache {
@@ -119,22 +124,22 @@ func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types
 			return values, err
 		}
 
-		b, err := msg.AsBytes()
+		raw, err := msg.AsBytes()
 		if err != nil {
 			return values, err
 		}
 
-		value := types.TValue{}
-
-		v, err := types.SetTIntoTValue(b, T)
+		localT := reflect.New(reflect.TypeOf(T).Elem()).Interface()
+		v, err := types.SetTIntoTValue(raw, localT)
 		if err != nil {
 			return nil, err
 		}
 
-		value = *v
-		value.Key = keys[idx]
-		value.Found = true
-		values = append(values, value)
+		values = append(values, types.TValue{
+			Found: true,
+			Value: *v,
+			Key:   keys[idx],
+		})
 	}
 
 	return values, nil

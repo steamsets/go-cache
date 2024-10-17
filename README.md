@@ -28,6 +28,7 @@ Extra Features:
 > [!NOTE]
 > This package is still in development and most likely not ready for production use yet.
 > Please report any issues you find.
+> Feature requests are also welcome.
 
 # Installation
 

@@ -75,6 +75,7 @@ func (t tieredCache[T]) Get(ctx context.Context, ns types.TNamespace, key string
 
 		if value.Value != nil {
 			for _, lowerStore := range t.stores {
+
 				// No need to reset the value in our current store, just in all other ones.
 				if store.Name() == lowerStore.Name() {
 					continue
