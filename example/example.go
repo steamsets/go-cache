@@ -204,7 +204,11 @@ func main() {
 	})
 
 	for _, user := range swrUsers {
-		log.Printf("swrUsers [%s] has value: %+v", user.Key, user.Value)
+		if user.Found {
+			log.Printf("swrUsers [%s] has value: %+v %+v", user.Key, user.Value, user.Value.Address)
+		} else {
+			log.Printf("swrUsers [%s] not found", user.Key)
+		}
 	}
 
 	service.cache.User.Remove(ctx, []string{"user1"})

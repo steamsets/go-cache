@@ -126,16 +126,13 @@ func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types
 		}
 
 		localT := reflect.New(reflect.TypeOf(T).Elem()).Interface()
+
 		v, err := types.SetTIntoTValue(raw, localT)
 		if err != nil {
 			return nil, err
 		}
 
-		values = append(values, types.TValue{
-			Found: true,
-			Value: *v,
-			Key:   keys[idx],
-		})
+		values = append(values, *v)
 	}
 
 	return values, nil
