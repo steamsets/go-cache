@@ -88,39 +88,43 @@ func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TV
 }
 
 func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
-	var res []rueidis.RedisResult
-	if r.config.UseClientCache {
-		cmds := make([]rueidis.CacheableTTL, 0)
-		for _, k := range keys {
-			cmds = append(cmds, rueidis.CT(r.client.B().Get().Key(r.CreateCacheKey(ns, k)).Cache(), *r.config.CacheTime))
-		}
-		res = r.client.DoMultiCache(context.Background(), cmds...)
-	} else {
-		cmds := make([]rueidis.Completed, 0)
-		for _, k := range keys {
-			cmds = append(cmds, r.client.B().Get().Key(r.CreateCacheKey(ns, k)).Build())
-		}
+	var keysToGet []string
+	var ret map[string]rueidis.RedisMessage
+	var err error
 
-		res = r.client.DoMulti(context.Background(), cmds...)
+	ctx := context.Background()
+
+	for _, k := range keys {
+		keysToGet = append(keysToGet, r.CreateCacheKey(ns, k))
+	}
+
+	if r.config.UseClientCache {
+		ret, err = rueidis.MGetCache(r.client, ctx, *r.config.CacheTime, keysToGet)
+	} else {
+		ret, err = rueidis.MGet(r.client, ctx, keysToGet)
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	values := make([]types.TValue, 0)
-	for idx, cmd := range res {
-		msg, err := cmd.ToMessage()
-		if err == rueidis.Nil {
+	for str, v := range ret {
+		keyError := v.Error()
+		if keyError == rueidis.Nil {
 			values = append(values, types.TValue{
 				Found: false,
 				Value: nil,
-				Key:   keys[idx],
+				Key:   str,
 			})
 			continue
 		}
 
-		if err != nil {
-			return values, err
+		if keyError != nil {
+			return values, keyError
 		}
 
-		raw, err := msg.AsBytes()
+		raw, err := v.AsBytes()
 		if err != nil {
 			return values, err
 		}
@@ -132,6 +136,7 @@ func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types
 			return nil, err
 		}
 
+		v.Found = true
 		values = append(values, *v)
 	}
 
@@ -155,7 +160,7 @@ func (r *RedisStore) Set(ns types.TNamespace, key string, value types.TValue) er
 }
 
 func (r *RedisStore) SetMany(ns types.TNamespace, values []types.TValue, opts *types.SetOptions) error {
-	cmds := make([]rueidis.Completed, 0)
+	cmd := r.client.B().Mset()
 	for _, v := range values {
 		b, err := json.Marshal(v)
 
@@ -163,13 +168,11 @@ func (r *RedisStore) SetMany(ns types.TNamespace, values []types.TValue, opts *t
 			return err
 		}
 
-		cmds = append(cmds, r.client.B().Set().Key(r.CreateCacheKey(ns, v.Key)).Value(string(b)).Pxat(v.StaleUntil).Build())
+		cmd.KeyValue().KeyValue(r.CreateCacheKey(ns, v.Key), string(b))
 	}
 
-	for _, cmd := range r.client.DoMulti(context.Background(), cmds...) {
-		if err := cmd.Error(); err != nil {
-			return err
-		}
+	if err := r.client.Do(context.Background(), cmd.KeyValue().Build()).Error(); err != nil {
+		return err
 	}
 
 	return nil
