@@ -249,13 +249,20 @@ func (t *tieredCache[T]) SetMany(ctx context.Context, ns types.TNamespace, value
 		return errors.New("no stores found")
 	}
 
-	now := time.Now()
+	if len(values) == 0 {
+		return nil
+	}
 
+	now := time.Now()
 	valuesToSet := make([]types.TValue, 0)
 
 	// adjust keys to have the correct stale times
 	for _, value := range values {
-		fresh, stale := getStaleFreshTime(now, t.fresh, t.stale, opts)
+		if value.Opts == nil && opts != nil {
+			value.Opts = opts
+		}
+
+		fresh, stale := getStaleFreshTime(now, t.fresh, t.stale, value.Opts)
 		valuesToSet = append(valuesToSet, types.TValue{
 			Value:      value.Value,
 			FreshUntil: fresh,
@@ -275,6 +282,7 @@ func (t *tieredCache[T]) SetMany(ctx context.Context, ns types.TNamespace, value
 			telemetry.RecordError(span2, err)
 			return fault.Wrap(err, fmsg.With(store.Name()+" failed to set keys: "))
 		}
+
 		span2.End()
 	}
 
