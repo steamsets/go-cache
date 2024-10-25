@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"reflect"
 	"strings"
 
@@ -186,18 +187,21 @@ func (e *EncryptedStore) Decrypt(encryptedValue *EncryptedValue) (string, error)
 func FromBase64Key(base64EncodedKey string) cache.StoreMiddleware {
 	key, err := base64.StdEncoding.DecodeString(base64EncodedKey)
 	if err != nil {
-		panic(err)
+		log.Printf("error: %+v", err)
+		return nil
 	}
 
 	// Verify key length for AES-256
 	if len(key) != 32 {
-		panic(err)
+		log.Printf("error: %+v", err)
+		return nil
 	}
 
 	// Create AES cipher to verify the key
 	_, err = aes.NewCipher(key)
 	if err != nil {
-		panic(err)
+		log.Printf("error: %+v", err)
+		return nil
 	}
 
 	// Compute SHA-256 hash of the key

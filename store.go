@@ -7,6 +7,7 @@ import (
 type Store interface {
 	Name() string
 
+	CreateCacheKey(namespace types.TNamespace, key string) string
 	Get(namespace types.TNamespace, key string, T any) (value types.TValue, found bool, err error)
 	GetMany(namespace types.TNamespace, keys []string, T any) ([]types.TValue, error)
 	Set(namespace types.TNamespace, key string, value types.TValue) error

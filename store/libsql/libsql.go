@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Southclaws/fault"
+	"github.com/Southclaws/fault/fmsg"
 	"github.com/steamsets/go-cache/pkg/types"
 )
 
@@ -36,12 +38,16 @@ func (l *LibsqlStore) Name() string {
 	return l.name
 }
 
-func (l *LibsqlStore) CreateCacheKey(namespace string, key string) string {
+func (l *LibsqlStore) CreateCacheKey(namespace types.TNamespace, key string) string {
 	return string(namespace) + "::" + key
 }
 
+func (l *LibsqlStore) UndoCacheKey(namespace types.TNamespace, key string) string {
+	return strings.TrimPrefix(key, string(namespace)+"::")
+}
+
 func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.TValue, found bool, err error) {
-	cacheKey := l.CreateCacheKey(string(ns), key)
+	cacheKey := l.CreateCacheKey(ns, key)
 	val := types.TValue{Found: false, Key: cacheKey}
 	raw := make([]byte, 0)
 
@@ -60,6 +66,7 @@ func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.T
 		return value, false, err
 	}
 
+	val.Key = l.UndoCacheKey(ns, val.Key)
 	val.Found = true
 	val.Value = v.Value
 
@@ -74,12 +81,12 @@ func (l *LibsqlStore) GetMany(ns types.TNamespace, keys []string, T any) ([]type
 
 	keysToGet := make([]interface{}, 0)
 	for _, key := range keys {
-		keysToGet = append(keysToGet, l.CreateCacheKey(string(ns), key))
+		keysToGet = append(keysToGet, l.CreateCacheKey(ns, key))
 	}
 
 	rows, err := l.config.DB.Query("SELECT key, fresh_until, stale_until, value FROM "+l.config.TableName+" WHERE key IN ("+strings.Join(placeHolders, ",")+")", keysToGet...)
 	if err != nil {
-		return nil, err
+		return nil, fault.Wrap(err, fmsg.With("failed to exec query"))
 	}
 
 	defer rows.Close()
@@ -87,22 +94,22 @@ func (l *LibsqlStore) GetMany(ns types.TNamespace, keys []string, T any) ([]type
 	values := make([]types.TValue, 0)
 
 	for rows.Next() {
-		var val types.TValue
+		val := types.TValue{}
 		raw := make([]byte, 0)
 
 		if err := rows.Scan(&val.Key, &val.FreshUntil, &val.StaleUntil, &raw); err != nil {
-			return nil, err
+			return nil, fault.Wrap(err, fmsg.With("failed to scan row"))
 		}
 
 		localT := reflect.New(reflect.TypeOf(T).Elem()).Interface()
-
-		v, err := types.SetTIntoTValue(raw, localT)
+		v, err := types.SetTIntoValue(raw, localT)
 		if err != nil {
 			return nil, err
 		}
 
+		val.Key = l.UndoCacheKey(ns, val.Key)
 		val.Found = true
-		val.Value = v
+		val.Value = v.Value
 		values = append(values, val)
 	}
 
@@ -121,7 +128,7 @@ func (l *LibsqlStore) Set(ns types.TNamespace, key string, value types.TValue) e
 
 	_, err = l.config.DB.Exec(
 		"INSERT OR REPLACE INTO "+l.config.TableName+" (key, fresh_until, stale_until, value) VALUES(?, ?, ?, ?)",
-		l.CreateCacheKey(string(ns), key),
+		l.CreateCacheKey(ns, key),
 		value.FreshUntil,
 		value.StaleUntil,
 		string(b),
@@ -151,7 +158,7 @@ func (l *LibsqlStore) SetMany(ns types.TNamespace, values []types.TValue, opts *
 			}
 
 			sql = sql + "(?, ?, ?, ?),"
-			params = append(params, l.CreateCacheKey(string(ns), v.Key), v.FreshUntil, v.StaleUntil, string(b))
+			params = append(params, l.CreateCacheKey(ns, v.Key), v.FreshUntil, v.StaleUntil, string(b))
 		}
 
 		sql = sql[:len(sql)-1]
@@ -174,7 +181,7 @@ func (l *LibsqlStore) Remove(ns types.TNamespace, key []string) error {
 	keysToDelete := make([]string, 0)
 
 	for _, key := range key {
-		keysToDelete = append(keysToDelete, l.CreateCacheKey(string(ns), key))
+		keysToDelete = append(keysToDelete, l.CreateCacheKey(ns, key))
 	}
 
 	_, err := l.config.DB.Exec("DELETE FROM "+l.config.TableName+" WHERE key IN ("+strings.Join(placeHolders, ",")+")", keysToDelete)

@@ -11,18 +11,16 @@ It does not support all the features of unkey-cache yet.
 - [x] Memory Store
 - [x] Redis Store
 - [x] Libsql Store
+      The following Table is needed:
 
 ```sql
-  The following Table is needed:
-  CREATE TABLE cache (
+CREATE TABLE cache
+(
     key TEXT PRIMARY KEY,
-    fresh_until TIMESTAMP,
-    stale_until TIMESTAMP,
-    value TEXT
-  );
-
-  CREATE INDEX idx_fresh_until ON cache (fresh_until);
-  CREATE INDEX idx_stale_until ON cache (stale_until);
+    fresh_until INTEGER,
+    stale_until INTEGER,
+    value       TEXT
+);
 ```
 
 Todo:

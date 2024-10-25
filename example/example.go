@@ -68,8 +68,8 @@ func init() {
 	})
 
 	dbName := "local.db"
-	primaryUrl := "libsql://YOUR_DB.turso.io"
-	authToken := "YOUR_AUTH_TOKEN"
+	primaryUrl := os.Getenv("TURSO_URL")
+	authToken := os.Getenv("TURSO_TOKEN")
 
 	dir, err := os.MkdirTemp("", "libsql-*")
 	if err != nil {
@@ -79,7 +79,9 @@ func init() {
 
 	dbPath := filepath.Join(dir, dbName)
 
-	connector, err := libsql.NewEmbeddedReplicaConnector(dbPath, primaryUrl,
+	connector, err := libsql.NewEmbeddedReplicaConnector(
+		dbPath,
+		primaryUrl,
 		libsql.WithAuthToken(authToken),
 	)
 
@@ -95,7 +97,7 @@ func init() {
 		TableName: "cache",
 	})
 
-	encryption := middleware.WithEncryption("YOUR_SECRET")
+	encryption := middleware.WithEncryption(os.Getenv("ENCRYPTION_KEY"))
 	libSqlEncrypted := encryption.Wrap(libsql)
 
 	c := Cache{
@@ -156,10 +158,15 @@ func main() {
 		Description: "This is a test post",
 	}
 
-	service.cache.String.Set(ctx, "hallo", "welt", nil)
-	stringValue, found, err := service.cache.String.Get(ctx, "hallo")
+	stringValue, err := service.cache.String.Swr(ctx, "hallo", func(string) (*string, error) {
+		str := "welt"
+		return &str, nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	log.Printf("stringValue has value: %+v found %+v err %+v", *stringValue, found, err)
+	log.Printf("stringValue has value: %+v err %+v", *stringValue, err)
 	if err := service.cache.EncryptedStruct.Set(ctx, "p1", p, nil); err != nil {
 		log.Printf("error: %+v", err)
 	}
@@ -334,10 +341,20 @@ func main() {
 
 	start := time.Now()
 	// get them all
-	manyStrings, err := service.cache.User.GetMany(ctx, keys)
+	manyStrings, err := service.cache.String.GetMany(ctx, keys)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Printf("manyStrings: %d took %s", len(manyStrings), time.Since(start))
+	foundKeys := 0
+	notFound := 0
+	for _, m := range manyStrings {
+		if m.Found {
+			foundKeys++
+		} else {
+			notFound++
+		}
+	}
+
+	log.Printf("manyStrings: %d took %s and found %d and not found %d", len(manyStrings), time.Since(start), foundKeys, notFound)
 }
