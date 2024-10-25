@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/Southclaws/fault"
 	"github.com/Southclaws/fault/fmsg"
@@ -26,6 +27,10 @@ var DefaultTableName string = "cache"
 func New(cfg Config) *LibsqlStore {
 	if cfg.TableName == "" {
 		cfg.TableName = DefaultTableName
+	}
+
+	if cfg.DB == nil {
+		panic("DB is nil")
 	}
 
 	return &LibsqlStore{
@@ -51,7 +56,21 @@ func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.T
 	val := types.TValue{Found: false, Key: cacheKey}
 	raw := make([]byte, 0)
 
-	err = l.config.DB.QueryRow("SELECT key, fresh_until, stale_until, value FROM "+l.config.TableName+" WHERE key = ?", cacheKey).Scan(&val.Key, &val.FreshUntil, &val.StaleUntil, &raw)
+	staleUntil := ""
+	freshUntil := ""
+	err = l.config.DB.
+		QueryRow("SELECT key, fresh_until, stale_until, value FROM "+l.config.TableName+" WHERE key = ?", cacheKey).
+		Scan(&val.Key, &freshUntil, &staleUntil, &raw)
+
+	freshAsTime, err := time.Parse(time.RFC3339, freshUntil)
+	if err != nil {
+		return value, false, err
+	}
+	staleAsTime, err := time.Parse(time.RFC3339, staleUntil)
+	if err != nil {
+		return value, false, err
+	}
+
 	if err == sql.ErrNoRows {
 		return value, false, nil
 	}
@@ -69,6 +88,8 @@ func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.T
 	val.Key = l.UndoCacheKey(ns, val.Key)
 	val.Found = true
 	val.Value = v.Value
+	val.FreshUntil = freshAsTime
+	val.StaleUntil = staleAsTime
 
 	return val, true, nil
 }
