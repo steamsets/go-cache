@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -42,6 +41,8 @@ type User struct {
 type Post struct {
 	Title       string
 	Description string
+	CreatedAt   time.Time
+	Updated     *time.Time
 }
 
 type Service struct {
@@ -112,7 +113,7 @@ func init() {
 		}),
 		Post: cache.NewNamespace[Post]("post", nil, cache.NamespaceConfig{
 			Stores: []cache.Store{
-				libSqlEncrypted,
+				libsql,
 			},
 			Fresh: 10 * time.Minute,
 			Stale: 10 * time.Minute,
@@ -148,14 +149,16 @@ func init() {
 func main() {
 	ctx := context.Background()
 
+	in5Minutes := time.Now().Add(time.Minute * 5)
 	u := User{
 		Name:  "Flo",
 		Email: "test@example.com",
 	}
-
 	p := Post{
 		Title:       "Hello World!",
 		Description: "This is a test post",
+		CreatedAt:   time.Now().Add(time.Hour * 24 * 180),
+		Updated:     &in5Minutes,
 	}
 
 	stringValue, err := service.cache.String.Swr(ctx, "hallo", func(string) (*string, error) {
@@ -180,12 +183,6 @@ func main() {
 	if err := service.cache.Encrypted.Set(ctx, "hello", "world", nil); err != nil {
 		log.Printf("error: %+v", err)
 	}
-	encryptedString, found, err := service.cache.Encrypted.Get(ctx, "hello")
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("encryptedString: %+v", *encryptedString)
-	log.Printf("found: %+v", found)
 
 	err = service.cache.User.Set(ctx, "user1", u, nil)
 	if err != nil {
@@ -320,41 +317,4 @@ func main() {
 	log.Printf("getPost has value: %+v", getPost)
 	log.Printf("getPost has found: %+v", found)
 	log.Printf("getPost has error: %+v", err)
-
-	keys := make([]string, 0)
-	keysToSet := make([]cache.SetMany[*string], 0)
-	for i := range 20_000 {
-		k := fmt.Sprintf("%d", i)
-		keys = append(keys, k)
-		keysToSet = append(keysToSet, cache.SetMany[*string]{
-			Value: &k,
-			Key:   k,
-			Opts:  nil,
-		})
-	}
-
-	// set them all
-	err = service.cache.String.SetMany(ctx, keysToSet, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	start := time.Now()
-	// get them all
-	manyStrings, err := service.cache.String.GetMany(ctx, keys)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	foundKeys := 0
-	notFound := 0
-	for _, m := range manyStrings {
-		if m.Found {
-			foundKeys++
-		} else {
-			notFound++
-		}
-	}
-
-	log.Printf("manyStrings: %d took %s and found %d and not found %d", len(manyStrings), time.Since(start), foundKeys, notFound)
 }
