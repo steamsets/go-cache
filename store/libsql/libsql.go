@@ -131,23 +131,38 @@ func (l *LibsqlStore) Set(ns types.TNamespace, key string, value types.TValue) e
 }
 
 func (l *LibsqlStore) SetMany(ns types.TNamespace, values []types.TValue, opts *types.SetOptions) error {
-	sql := "INSERT OR REPLACE INTO " + l.config.TableName + " (key, fresh_until, stale_until, value) VALUES "
+	// IMPORTANT: This is not a transaction and will be a max of 2000 rows at a time
+	chunks := make([][]types.TValue, 0)
+	chunkSize := 2000
+	for i, v := range values {
+		if i%chunkSize == 0 {
+			chunks = append(chunks, make([]types.TValue, 0))
+		}
+		chunks[len(chunks)-1] = append(chunks[len(chunks)-1], v)
+	}
 
-	params := make([]interface{}, 0)
-	for _, v := range values {
-		b, err := json.Marshal(v.Value)
+	for _, chunk := range chunks {
+		sql := "INSERT OR REPLACE INTO " + l.config.TableName + " (key, fresh_until, stale_until, value) VALUES "
+		params := make([]interface{}, 0)
+		for _, v := range chunk {
+			b, err := json.Marshal(v.Value)
+			if err != nil {
+				return err
+			}
+
+			sql = sql + "(?, ?, ?, ?),"
+			params = append(params, l.CreateCacheKey(string(ns), v.Key), v.FreshUntil, v.StaleUntil, string(b))
+		}
+
+		sql = sql[:len(sql)-1]
+
+		_, err := l.config.DB.Exec(sql, params...)
 		if err != nil {
 			return err
 		}
-
-		sql = sql + "(?, ?, ?, ?),"
-		params = append(params, l.CreateCacheKey(string(ns), v.Key), v.FreshUntil, v.StaleUntil, string(b))
 	}
 
-	sql = sql[:len(sql)-1]
-
-	_, err := l.config.DB.Exec(sql, params...)
-	return err
+	return nil
 }
 
 func (l *LibsqlStore) Remove(ns types.TNamespace, key []string) error {

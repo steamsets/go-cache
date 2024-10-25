@@ -11,6 +11,7 @@ import (
 
 	"github.com/redis/rueidis"
 	"github.com/steamsets/go-cache"
+	"github.com/steamsets/go-cache/middleware"
 	libsqlStore "github.com/steamsets/go-cache/store/libsql"
 	memoryStore "github.com/steamsets/go-cache/store/memory"
 	redisStore "github.com/steamsets/go-cache/store/redis"
@@ -19,9 +20,11 @@ import (
 )
 
 type Cache struct {
-	User   cache.Namespace[User]
-	Post   cache.Namespace[Post]
-	String cache.Namespace[string]
+	User            cache.Namespace[User]
+	Post            cache.Namespace[Post]
+	String          cache.Namespace[string]
+	EncryptedStruct cache.Namespace[Post]
+	Encrypted       cache.Namespace[string]
 }
 
 type Address struct {
@@ -58,7 +61,7 @@ func init() {
 	clientCfg := rueidis.MustParseURL("redis://localhost:6379/0")
 	clientCfg.SelectDB = 0
 	clientCfg.ClientName = "go-cache"
-	clientCfg.DisableCache = false
+	clientCfg.DisableCache = true
 	client, err := rueidis.NewClient(clientCfg)
 	redis := redisStore.New(redisStore.Config{
 		Client: client,
@@ -92,7 +95,8 @@ func init() {
 		TableName: "cache",
 	})
 
-	log.Printf("Connected to database: %s", dbName)
+	encryption := middleware.WithEncryption("YOUR_SECRET")
+	libSqlEncrypted := encryption.Wrap(libsql)
 
 	c := Cache{
 		User: cache.NewNamespace[User]("user", nil, cache.NamespaceConfig{
@@ -106,15 +110,28 @@ func init() {
 		}),
 		Post: cache.NewNamespace[Post]("post", nil, cache.NamespaceConfig{
 			Stores: []cache.Store{
-				libsql,
+				libSqlEncrypted,
 			},
 			Fresh: 10 * time.Minute,
 			Stale: 10 * time.Minute,
 		}),
 		String: cache.NewNamespace[string]("string", nil, cache.NamespaceConfig{
 			Stores: []cache.Store{
-				memory,
-				redis,
+				libsql,
+			},
+			Fresh: 10 * time.Minute,
+			Stale: 10 * time.Minute,
+		}),
+		EncryptedStruct: cache.NewNamespace[Post]("encrypted_struct", nil, cache.NamespaceConfig{
+			Stores: []cache.Store{
+				libSqlEncrypted,
+			},
+			Fresh: 10 * time.Minute,
+			Stale: 10 * time.Minute,
+		}),
+		Encrypted: cache.NewNamespace[string]("encrypted_string", nil, cache.NamespaceConfig{
+			Stores: []cache.Store{
+				libSqlEncrypted,
 			},
 			Fresh: 10 * time.Minute,
 			Stale: 10 * time.Minute,
@@ -127,6 +144,8 @@ func init() {
 }
 
 func main() {
+	ctx := context.Background()
+
 	u := User{
 		Name:  "Flo",
 		Email: "test@example.com",
@@ -137,9 +156,31 @@ func main() {
 		Description: "This is a test post",
 	}
 
-	ctx := context.Background()
+	service.cache.String.Set(ctx, "hallo", "welt", nil)
+	stringValue, found, err := service.cache.String.Get(ctx, "hallo")
 
-	err := service.cache.User.Set(ctx, "user1", u, nil)
+	log.Printf("stringValue has value: %+v found %+v err %+v", *stringValue, found, err)
+	if err := service.cache.EncryptedStruct.Set(ctx, "p1", p, nil); err != nil {
+		log.Printf("error: %+v", err)
+	}
+	post, found, err := service.cache.EncryptedStruct.Get(ctx, "p1")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("encryptedPost: %+v", post)
+	log.Printf("found: %+v", found)
+
+	if err := service.cache.Encrypted.Set(ctx, "hello", "world", nil); err != nil {
+		log.Printf("error: %+v", err)
+	}
+	encryptedString, found, err := service.cache.Encrypted.Get(ctx, "hello")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("encryptedString: %+v", *encryptedString)
+	log.Printf("found: %+v", found)
+
+	err = service.cache.User.Set(ctx, "user1", u, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -273,7 +314,6 @@ func main() {
 	log.Printf("getPost has found: %+v", found)
 	log.Printf("getPost has error: %+v", err)
 
-	// generate me 20.000 random strings
 	keys := make([]string, 0)
 	keysToSet := make([]cache.SetMany[*string], 0)
 	for i := range 20_000 {

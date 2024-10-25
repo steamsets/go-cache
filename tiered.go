@@ -140,6 +140,7 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 			telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
 		)
 		values, err := store.GetMany(t.ns, keysToFind, &result)
+
 		if err != nil {
 			telemetry.RecordError(span, err)
 			return nil, fault.Wrap(err, fmsg.With(store.Name()+" failed to get keys: "+strings.Join(keys, ",")))
