@@ -40,3 +40,22 @@ func SetTIntoTValue(bytes []byte, T interface{}) (*TValue, error) {
 
 	return &tValue, nil
 }
+
+// This will move our raw json string into a TValue
+// and then unmarshal it into the T type that is not know to the store but just passed in when
+// getting the key
+func SetTIntoValue(bytes []byte, T interface{}) (*TValue, error) {
+	tValue := TValue{
+		Value: T,
+	}
+
+	if err := json.Unmarshal(bytes, &tValue.Value); err != nil {
+		return nil, err
+	}
+
+	if tValue.Value != nil {
+		tValue.Value = reflect.ValueOf(tValue.Value).Elem().Interface()
+	}
+
+	return &tValue, nil
+}

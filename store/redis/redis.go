@@ -13,36 +13,16 @@ import (
 // This will work for any redis compatible source e.g dragonfly, redis, etc
 type RedisStore struct {
 	name   string
-	client rueidis.Client
 	config Config
 }
 
 type Config struct {
-	UseClientCache bool
-	CacheTime      *time.Duration
-	DSN            string
-	Database       int
+	Client rueidis.Client
 }
 
 func New(cfg Config) *RedisStore {
-	if cfg.UseClientCache && cfg.CacheTime == nil {
-		t := time.Minute * 15
-		cfg.CacheTime = &t
-	}
-
-	clientCfg := rueidis.MustParseURL(cfg.DSN)
-	clientCfg.SelectDB = cfg.Database
-	clientCfg.ClientName = "go-cache"
-	clientCfg.DisableCache = !(cfg.UseClientCache)
-	client, err := rueidis.NewClient(clientCfg)
-
-	if err != nil {
-		panic(err)
-	}
-
 	return &RedisStore{
 		config: cfg,
-		client: client,
 		name:   "redis",
 	}
 }
@@ -57,11 +37,8 @@ func (r *RedisStore) CreateCacheKey(namespace types.TNamespace, key string) stri
 
 func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TValue, found bool, err error) {
 	var resp rueidis.RedisResult
-	if r.config.UseClientCache {
-		resp = r.client.DoCache(context.Background(), r.client.B().Get().Key(r.CreateCacheKey(ns, key)).Cache(), *r.config.CacheTime)
-	} else {
-		resp = r.client.Do(context.Background(), r.client.B().Get().Key(r.CreateCacheKey(ns, key)).Build())
-	}
+
+	resp = r.config.Client.DoCache(context.Background(), r.config.Client.B().Get().Key(r.CreateCacheKey(ns, key)).Cache(), time.Minute)
 
 	msg, err := resp.ToMessage()
 	if err == rueidis.Nil {
@@ -88,21 +65,14 @@ func (r *RedisStore) Get(ns types.TNamespace, key string, T any) (value types.TV
 }
 
 func (r *RedisStore) GetMany(ns types.TNamespace, keys []string, T any) ([]types.TValue, error) {
-	var keysToGet []string
-	var ret map[string]rueidis.RedisMessage
-	var err error
-
 	ctx := context.Background()
 
+	keysToGet := make([]string, 0)
 	for _, k := range keys {
 		keysToGet = append(keysToGet, r.CreateCacheKey(ns, k))
 	}
 
-	if r.config.UseClientCache {
-		ret, err = rueidis.MGetCache(r.client, ctx, *r.config.CacheTime, keysToGet)
-	} else {
-		ret, err = rueidis.MGet(r.client, ctx, keysToGet)
-	}
+	ret, err := rueidis.MGetCache(r.config.Client, ctx, time.Minute, keysToGet)
 
 	if err != nil {
 		return nil, err
@@ -149,9 +119,9 @@ func (r *RedisStore) Set(ns types.TNamespace, key string, value types.TValue) er
 		return err
 	}
 
-	if err := r.client.Do(
+	if err := r.config.Client.Do(
 		context.Background(),
-		r.client.B().Set().Key(r.CreateCacheKey(ns, key)).Value(string(b)).Pxat(value.StaleUntil).Build(),
+		r.config.Client.B().Set().Key(r.CreateCacheKey(ns, key)).Value(string(b)).Pxat(value.StaleUntil).Build(),
 	).Error(); err != nil {
 		return err
 	}
@@ -160,7 +130,7 @@ func (r *RedisStore) Set(ns types.TNamespace, key string, value types.TValue) er
 }
 
 func (r *RedisStore) SetMany(ns types.TNamespace, values []types.TValue, opts *types.SetOptions) error {
-	cmd := r.client.B().Mset()
+	cmd := r.config.Client.B().Mset()
 	for _, v := range values {
 		b, err := json.Marshal(v)
 
@@ -171,7 +141,7 @@ func (r *RedisStore) SetMany(ns types.TNamespace, values []types.TValue, opts *t
 		cmd.KeyValue().KeyValue(r.CreateCacheKey(ns, v.Key), string(b))
 	}
 
-	if err := r.client.Do(context.Background(), cmd.KeyValue().Build()).Error(); err != nil {
+	if err := r.config.Client.Do(context.Background(), cmd.KeyValue().Build()).Error(); err != nil {
 		return err
 	}
 
@@ -184,7 +154,7 @@ func (r *RedisStore) Remove(ns types.TNamespace, key []string) error {
 		keys = append(keys, r.CreateCacheKey(ns, k))
 	}
 
-	res := r.client.Do(context.Background(), r.client.B().Del().Key(keys...).Build())
+	res := r.config.Client.Do(context.Background(), r.config.Client.B().Del().Key(keys...).Build())
 
 	msg, err := res.ToMessage()
 	if err == rueidis.Nil {

@@ -186,7 +186,8 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 	}
 
 	valuesToReturn := make([]types.TValue, 0)
-	// Now we need to map all the values which we did find or didn't '
+
+	// Now we need to map all the values which we did find or didn't
 	for _, key := range keys {
 		if v, ok := foundValues[key]; !ok {
 			valuesToReturn = append(valuesToReturn, types.TValue{

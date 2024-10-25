@@ -9,11 +9,25 @@ It does not support all the features of unkey-cache yet.
 - [x] Tiered caching
 - [x] Memory Store
 - [x] Redis Store
+- [x] Libsql Store
+
+```sql
+  The following Table is needed:
+  CREATE TABLE cache (
+    key TEXT PRIMARY KEY,
+    fresh_until TIMESTAMP,
+    stale_until TIMESTAMP,
+    value TEXT
+  );
+
+  CREATE INDEX idx_fresh_until ON cache (fresh_until);
+  CREATE INDEX idx_stale_until ON cache (stale_until);
+```
 
 Todo:
 
 - [] Cloudflare Store
-- [] Libsql Store
+
 - [] Metric Middleware
 - [] Encryption Middleware
 
