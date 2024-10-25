@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/Southclaws/fault/fmsg"
 	"github.com/steamsets/go-cache/pkg/telemetry"
 	"github.com/steamsets/go-cache/pkg/types"
+	"github.com/steamsets/go-cache/pkg/util"
 )
 
 type tieredCache[T any] struct {
@@ -115,6 +115,7 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 		return nil, errors.New("no stores found")
 	}
 
+	keysToGet := make(map[string]struct{}, 0)
 	valuesToSet := make([]types.TValue, 0)
 	foundValues := make(map[string]types.TValue)
 
@@ -122,15 +123,16 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 	// If we can't find one key in a store we need to check the lower stores for all values except
 	// the ones that we already found
 
-	// Hack, not sure why but I need to copy the whole array in order to not modify the original
-	keysToFind := make([]string, len(keys))
-	copy(keysToFind, keys)
+	for _, key := range keys {
+		keysToGet[key] = struct{}{}
+	}
 
 	for _, store := range t.stores {
 		// we already found all keys
-		if len(keysToFind) == 0 {
+		if len(keysToGet) == 0 {
 			break
 		}
+		keysToFind := util.MapToString(keysToGet)
 
 		var result T
 		ctx, span := telemetry.NewSpan(ctx, store.Name()+".get-many")
@@ -139,8 +141,8 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 			telemetry.AttributeKV{Key: "keys", Value: keysToFind},
 			telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
 		)
-		values, err := store.GetMany(t.ns, keysToFind, &result)
 
+		values, err := store.GetMany(t.ns, keysToFind, &result)
 		if err != nil {
 			telemetry.RecordError(span, err)
 			return nil, fault.Wrap(err, fmsg.With(store.Name()+" failed to get keys: "+strings.Join(keys, ",")))
@@ -150,15 +152,8 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 			if v.Found {
 				// Since we found it set it to the lower stores
 				valuesToSet = append(valuesToSet, v)
-
 				// But we should not look for it again
-				for i, k := range keysToFind {
-					if k == v.Key {
-						keysToFind = slices.Delete(keysToFind, i, i+1)
-						break
-					}
-				}
-
+				delete(keysToGet, v.Key)
 				foundValues[v.Key] = v
 			}
 		}
@@ -172,7 +167,7 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 				_, span := telemetry.NewSpan(ctx, lowerStore.Name()+".set-many")
 				defer span.End()
 				telemetry.WithAttributes(span,
-					telemetry.AttributeKV{Key: "keys", Value: keysToFind},
+					telemetry.AttributeKV{Key: "keys_amount", Value: len(keysToGet)},
 					telemetry.AttributeKV{Key: "namespace", Value: string(ns)},
 				)
 				if err := lowerStore.SetMany(t.ns, valuesToSet, nil); err != nil {
@@ -187,7 +182,6 @@ func (t tieredCache[T]) GetMany(ctx context.Context, ns types.TNamespace, keys [
 	}
 
 	valuesToReturn := make([]types.TValue, 0)
-
 	// Now we need to map all the values which we did find or didn't
 	for _, key := range keys {
 		if v, ok := foundValues[key]; !ok {
