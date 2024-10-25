@@ -62,6 +62,10 @@ func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.T
 		QueryRow("SELECT key, fresh_until, stale_until, value FROM "+l.config.TableName+" WHERE key = ?", cacheKey).
 		Scan(&val.Key, &freshUntil, &staleUntil, &raw)
 
+	if err == sql.ErrNoRows {
+		return value, false, nil
+	}
+
 	freshAsTime, err := time.Parse(time.RFC3339, freshUntil)
 	if err != nil {
 		return value, false, err
@@ -69,10 +73,6 @@ func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.T
 	staleAsTime, err := time.Parse(time.RFC3339, staleUntil)
 	if err != nil {
 		return value, false, err
-	}
-
-	if err == sql.ErrNoRows {
-		return value, false, nil
 	}
 
 	if err != nil {
