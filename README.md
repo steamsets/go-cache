@@ -6,6 +6,7 @@ This is a caching library heavily inspired by [unkey-cache](https://www.npmjs.co
 
 It does not support all the features of unkey-cache yet.
 
+- [x] Encryption Middleware
 - [x] Tiered caching
 - [x] Memory Store
 - [x] Redis Store
@@ -27,9 +28,8 @@ It does not support all the features of unkey-cache yet.
 Todo:
 
 - [] Cloudflare Store
-
+- [] Cloudflare KV
 - [] Metric Middleware
-- [] Encryption Middleware
 
 Extra Features:
 
