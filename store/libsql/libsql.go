@@ -118,8 +118,19 @@ func (l *LibsqlStore) GetMany(ns types.TNamespace, keys []string, T any) ([]type
 		val := types.TValue{}
 		raw := make([]byte, 0)
 
-		if err := rows.Scan(&val.Key, &val.FreshUntil, &val.StaleUntil, &raw); err != nil {
+		staleUntil := ""
+		freshUntil := ""
+		if err := rows.Scan(&val.Key, &freshUntil, &staleUntil, &raw); err != nil {
 			return nil, fault.Wrap(err, fmsg.With("failed to scan row"))
+		}
+
+		freshAsTime, err := time.Parse(time.RFC3339, freshUntil)
+		if err != nil {
+			return nil, err
+		}
+		staleAsTime, err := time.Parse(time.RFC3339, staleUntil)
+		if err != nil {
+			return nil, err
 		}
 
 		localT := reflect.New(reflect.TypeOf(T).Elem()).Interface()
@@ -130,6 +141,8 @@ func (l *LibsqlStore) GetMany(ns types.TNamespace, keys []string, T any) ([]type
 
 		val.Key = l.UndoCacheKey(ns, val.Key)
 		val.Found = true
+		val.FreshUntil = freshAsTime
+		val.StaleUntil = staleAsTime
 		val.Value = v.Value
 		values = append(values, val)
 	}
