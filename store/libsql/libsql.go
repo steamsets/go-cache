@@ -212,12 +212,12 @@ func (l *LibsqlStore) Remove(ns types.TNamespace, key []string) error {
 		placeHolders = append(placeHolders, "?")
 	}
 
-	keysToDelete := make([]string, 0)
+	keysToDelete := make([]any, 0)
 
 	for _, key := range key {
 		keysToDelete = append(keysToDelete, l.CreateCacheKey(ns, key))
 	}
 
-	_, err := l.config.DB.Exec("DELETE FROM "+l.config.TableName+" WHERE key IN ("+strings.Join(placeHolders, ",")+")", keysToDelete)
+	_, err := l.config.DB.Exec("DELETE FROM "+l.config.TableName+" WHERE key IN ("+strings.Join(placeHolders, ",")+")", keysToDelete...)
 	return err
 }
