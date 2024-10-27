@@ -66,15 +66,15 @@ func (l *LibsqlStore) Get(ns types.TNamespace, key string, T any) (value types.T
 		return value, false, nil
 	}
 
+	if err != nil {
+		return value, false, err
+	}
+
 	freshAsTime, err := time.Parse(time.RFC3339, freshUntil)
 	if err != nil {
 		return value, false, err
 	}
 	staleAsTime, err := time.Parse(time.RFC3339, staleUntil)
-	if err != nil {
-		return value, false, err
-	}
-
 	if err != nil {
 		return value, false, err
 	}
