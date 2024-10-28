@@ -18,15 +18,24 @@ type LibsqlStore struct {
 }
 
 type Config struct {
+	// If not set will use DefaultTableName
 	TableName string
-	DB        *sql.DB
+
+	DB *sql.DB
+
+	// See  SQLITE_LIMIT_VARIABLE_NUMBER
+	MaxPlaceholders int
 }
 
-var DefaultTableName string = "cache"
+const DefaultTableName = "cache"
 
 func New(cfg Config) *LibsqlStore {
 	if cfg.TableName == "" {
 		cfg.TableName = DefaultTableName
+	}
+
+	if cfg.MaxPlaceholders <= 0 {
+		cfg.MaxPlaceholders = 32_766
 	}
 
 	if cfg.DB == nil {
@@ -171,7 +180,7 @@ func (l *LibsqlStore) Set(ns types.TNamespace, key string, value types.TValue) e
 	return err
 }
 
-const maxPlaceholders = 32_766
+// Amount of rows we are using
 const placeHoldersPerRow = 4
 
 func (l *LibsqlStore) SetMany(ns types.TNamespace, values []types.TValue, opts *types.SetOptions) error {
@@ -180,7 +189,7 @@ func (l *LibsqlStore) SetMany(ns types.TNamespace, values []types.TValue, opts *
 	totalPlaceholders := placeHoldersPerRow * len(values)
 
 	chunks := make([][]types.TValue, 0)
-	if totalPlaceholders <= maxPlaceholders {
+	if totalPlaceholders <= l.config.MaxPlaceholders {
 		// If we’re below the limit, no need to split into chunks
 		chunks = append(chunks, values)
 	} else {
@@ -188,7 +197,7 @@ func (l *LibsqlStore) SetMany(ns types.TNamespace, values []types.TValue, opts *
 		currentPlaceholders := 0
 
 		for _, v := range values {
-			if currentPlaceholders+placeHoldersPerRow > maxPlaceholders {
+			if currentPlaceholders+placeHoldersPerRow > l.config.MaxPlaceholders {
 				chunks = append(chunks, currentChunk)
 				currentChunk = make([]types.TValue, 0)
 				currentPlaceholders = 0
