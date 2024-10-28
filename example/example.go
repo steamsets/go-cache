@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -317,4 +318,18 @@ func main() {
 	log.Printf("getPost has value: %+v", getPost)
 	log.Printf("getPost has found: %+v", found)
 	log.Printf("getPost has error: %+v", err)
+
+	twentyThousand := make([]cache.SetMany[*string], 0)
+	for i := range 20_000 {
+		str := fmt.Sprintf("%d", i)
+		twentyThousand = append(twentyThousand, cache.SetMany[*string]{
+			Value: &str,
+			Key:   str,
+			Opts:  nil,
+		})
+	}
+
+	if err := service.cache.String.SetMany(ctx, twentyThousand, nil); err != nil {
+		log.Fatal(err)
+	}
 }

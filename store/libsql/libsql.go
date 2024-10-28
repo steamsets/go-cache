@@ -171,15 +171,36 @@ func (l *LibsqlStore) Set(ns types.TNamespace, key string, value types.TValue) e
 	return err
 }
 
+const maxPlaceholders = 32_766
+const placeHoldersPerRow = 4
+
 func (l *LibsqlStore) SetMany(ns types.TNamespace, values []types.TValue, opts *types.SetOptions) error {
-	// IMPORTANT: This is not a transaction and will be a max of 2000 rows at a time
+	// IMPORTANT: This is not a transaction and will be a max of maxPlaceholders placeholders at a time
+	// cache table has 4 columns so we need to multiply by placeHoldersPerRow
+	totalPlaceholders := placeHoldersPerRow * len(values)
+
 	chunks := make([][]types.TValue, 0)
-	chunkSize := 2000
-	for i, v := range values {
-		if i%chunkSize == 0 {
-			chunks = append(chunks, make([]types.TValue, 0))
+	if totalPlaceholders <= maxPlaceholders {
+		// If we’re below the limit, no need to split into chunks
+		chunks = append(chunks, values)
+	} else {
+		currentChunk := make([]types.TValue, 0)
+		currentPlaceholders := 0
+
+		for _, v := range values {
+			if currentPlaceholders+placeHoldersPerRow > maxPlaceholders {
+				chunks = append(chunks, currentChunk)
+				currentChunk = make([]types.TValue, 0)
+				currentPlaceholders = 0
+			}
+
+			currentChunk = append(currentChunk, v)
+			currentPlaceholders += placeHoldersPerRow
 		}
-		chunks[len(chunks)-1] = append(chunks[len(chunks)-1], v)
+
+		if len(currentChunk) > 0 {
+			chunks = append(chunks, currentChunk)
+		}
 	}
 
 	for _, chunk := range chunks {
