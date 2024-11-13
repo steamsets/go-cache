@@ -10,6 +10,7 @@ It does not support all the features of unkey-cache yet.
 - [x] Tiered caching
 - [x] Memory Store
 - [x] Redis Store
+- [x] Memcached Store
 - [x] Libsql Store
       The following Table is needed:
 
