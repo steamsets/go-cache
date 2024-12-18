@@ -125,7 +125,7 @@ func (m *MemcachedStore) SetMany(ns types.TNamespace, values []types.TValue, opt
 func (m *MemcachedStore) Remove(ns types.TNamespace, keys []string) error {
 	keysToRemove := make([]string, 0)
 	for _, k := range keys {
-		keys = append(keys, m.CreateCacheKey(ns, k))
+		keysToRemove = append(keys, m.CreateCacheKey(ns, k))
 	}
 
 	for _, key := range keysToRemove {
