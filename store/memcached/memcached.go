@@ -129,7 +129,7 @@ func (m *MemcachedStore) Remove(ns types.TNamespace, keys []string) error {
 	}
 
 	for _, key := range keysToRemove {
-		if err := m.config.Client.Delete(key); err != nil {
+		if err := m.config.Client.Delete(key); err != nil && err != memcache.ErrCacheMiss {
 			return err
 		}
 	}
