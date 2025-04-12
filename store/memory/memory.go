@@ -75,6 +75,7 @@ func (m *MemoryStore) GetMany(ns types.TNamespace, keys []string, T any) ([]type
 
 	for _, k := range keys {
 		value, found := m.otter.Get(m.CreateCacheKey(ns, k))
+
 		if !found {
 			value = types.TValue{
 				Found: false,
@@ -84,6 +85,7 @@ func (m *MemoryStore) GetMany(ns types.TNamespace, keys []string, T any) ([]type
 			continue
 		}
 
+		value.Found = true
 		values = append(values, value)
 	}
 
